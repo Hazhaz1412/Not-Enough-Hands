@@ -1,0 +1,93 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://minigames/toilet_minigame/toilet_minigame.gd" id="1_rv5c7"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yj5rg"]
+transparency = 1
+albedo_color = Color(0.4, 0.7, 1, 0.8)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_7hdnx"]
+top_radius = 0.01
+bottom_radius = 0.01
+height = 0.7
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rv5c7"]
+albedo_color = Color(0.9, 0.7, 0.5, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_lcl3i"]
+radius = 0.04
+height = 0.15
+
+[node name="ToiletMinigame" type="Node3D" unique_id=1969749724]
+script = ExtResource("1_rv5c7")
+
+[node name="LiquidStream" type="MeshInstance3D" parent="." unique_id=1097493064]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0.2)
+material_override = SubResource("StandardMaterial3D_yj5rg")
+mesh = SubResource("CylinderMesh_7hdnx")
+
+[node name="ToiletTarget" type="Marker3D" parent="." unique_id=1865070003]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0.2)
+
+[node name="HUDLayer" type="CanvasLayer" parent="." unique_id=1726076071]
+layer = 10
+
+[node name="MarginContainer" type="MarginContainer" parent="HUDLayer" unique_id=1717228249]
+anchors_preset = 10
+anchor_right = 1.0
+theme_override_constants/margin_top = 40
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDLayer/MarginContainer" unique_id=94046566]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="FeedbackLabel" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer" unique_id=1881988492]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "BALANCE"
+horizontal_alignment = 1
+
+[node name="StatusArea" type="HBoxContainer" parent="HUDLayer/MarginContainer/VBoxContainer" unique_id=1575445968]
+layout_mode = 2
+theme_override_constants/separation = 40
+alignment = 1
+
+[node name="BladderContainer" type="VBoxContainer" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea" unique_id=697398947]
+layout_mode = 2
+
+[node name="@Label@2" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/BladderContainer" unique_id=1483851125]
+layout_mode = 2
+text = "Bladder"
+
+[node name="ProgressBar" type="ProgressBar" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/BladderContainer" unique_id=1474873436]
+custom_minimum_size = Vector2(150, 15)
+layout_mode = 2
+value = 100.0
+
+[node name="HealthContainer" type="VBoxContainer" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea" unique_id=79263076]
+layout_mode = 2
+
+[node name="@Label@3" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/HealthContainer" unique_id=588938544]
+layout_mode = 2
+text = "Health"
+
+[node name="ProgressBar" type="ProgressBar" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/HealthContainer" unique_id=1434582485]
+custom_minimum_size = Vector2(150, 15)
+layout_mode = 2
+value = 100.0
+
+[node name="BalanceVisual" type="Node3D" parent="." unique_id=390584158]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0.7)
+
+[node name="AssetAnchor" type="Node3D" parent="BalanceVisual" unique_id=245507939]
+
+[node name="LeftHand" type="MeshInstance3D" parent="." unique_id=661827391]
+transform = Transform3D(1, 0, 0, 0, 0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_rv5c7")
+mesh = SubResource("CapsuleMesh_lcl3i")
+
+[node name="RightHand" type="MeshInstance3D" parent="." unique_id=858123847]
+transform = Transform3D(1, 0, 0, 0, 0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_rv5c7")
+mesh = SubResource("CapsuleMesh_lcl3i")

@@ -11,17 +11,43 @@ extends CharacterBody3D
 
 var is_crouching: bool = false
 @export var max_stamina: float = 100.0
+
+var yaw_clamp_active: bool = false
+var yaw_clamp_min: float = 0.0
+var yaw_clamp_max: float = 0.0
+var accumulated_yaw: float = 0.0
+var pitch_clamp_min: float = -PI/2
+var pitch_clamp_max: float = PI/2
 @export var sprint_stamina_drain: float = 20.0
 @export var stamina_regen_idle: float = 20.0
 @export var stamina_regen_moving: float = 5.0
 
+signal interact_target_changed(interactable: Interactable3D)
+var current_interactable: Interactable3D = null
+
 var current_stamina: float = max_stamina
+@export var max_health: float = 100.0
+var current_health: float = max_health
+
+signal health_changed(current: float, max: float)
+
 @export var mouse_sensitivity: float = 0.002
 @export var max_interaction_range: float = 10.0
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var interact_ray: RayCast3D = $CameraPivot/Camera3D/InteractRay
+@onready var first_person_holder: Node3D = $CameraPivot/Camera3D/FirstPersonItemHolder
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
+@onready var bladder: BladderComponent = $BladderComponent
+@onready var carry_slots: CarrySlotsComponent = $CarrySlotsComponent
+
+var current_held_node: Node3D = null
+var is_held_item_hidden: bool = false
+
+func set_held_item_visibility(visible: bool) -> void:
+	is_held_item_hidden = not visible
+	if current_held_node:
+		current_held_node.visible = visible
 
 # Get the gravity from the project settings to be synced with RigidBody nodes.
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -31,35 +57,77 @@ func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if interact_ray:
 		interact_ray.target_position = Vector3(0, 0, -max_interaction_range)
+		
+	if carry_slots:
+		carry_slots.selected_slot_changed.connect(_on_selected_slot_changed)
+		carry_slots.slots_changed.connect(_update_held_item)
+		# Delay first update slightly so ready calls finish
+		call_deferred("_update_held_item")
+
+func _on_selected_slot_changed(_idx: int) -> void:
+	_update_held_item()
+
+func _update_held_item() -> void:
+	if current_held_node:
+		current_held_node.queue_free()
+		current_held_node = null
+		
+	if not carry_slots: return
+	var item = carry_slots.get_selected_item()
+	if not item: return
+	
+	if item.held_scene:
+		current_held_node = item.held_scene.instantiate()
+		first_person_holder.add_child(current_held_node)
+	else:
+		var mesh_inst = MeshInstance3D.new()
+		var box = BoxMesh.new()
+		box.size = Vector3(0.1, 0.1, 0.2)
+		var mat = StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.5, 0.0)
+		box.material = mat
+		mesh_inst.mesh = box
+		current_held_node = mesh_inst
+		first_person_holder.add_child(current_held_node)
+		
+	current_held_node.visible = not is_held_item_hidden
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		# Rotate player horizontally
-		rotate_y(-event.relative.x * mouse_sensitivity)
+		var yaw_delta = -event.relative.x * mouse_sensitivity
+		if yaw_clamp_active:
+			var new_yaw = clamp(accumulated_yaw + yaw_delta, yaw_clamp_min, yaw_clamp_max)
+			yaw_delta = new_yaw - accumulated_yaw
+			accumulated_yaw = new_yaw
+		rotate_y(yaw_delta)
 		
 		# Rotate camera vertically
 		camera_pivot.rotate_x(-event.relative.y * mouse_sensitivity)
 		
-		# Clamp vertical rotation (-90 to 90 degrees)
-		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, -PI/2, PI/2)
+		# Clamp vertical rotation
+		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, pitch_clamp_min, pitch_clamp_max)
 		
 	if event.is_action_pressed("interact"):
-		if interact_ray and interact_ray.is_colliding():
-			var collider = interact_ray.get_collider()
-			var interact_target = collider
-			if collider and not collider.has_method("interact"):
-				interact_target = collider.get_parent()
-				
-			if interact_target and interact_target.has_method("interact"):
-				var dist = global_position.distance_to(interact_target.global_position)
-				var allowed_range = interact_target.interaction_range if "interaction_range" in interact_target else 2.5
-				if dist <= allowed_range:
-					if interact_target.get_method_argument_count("interact") > 0:
-						interact_target.interact(self)
-					else:
-						interact_target.interact()
+		if current_interactable:
+			current_interactable.interact(self)
+			
+	if carry_slots:
+		if event.is_action_pressed("select_slot_1"):
+			carry_slots.select_slot(0)
+		elif event.is_action_pressed("select_slot_2"):
+			carry_slots.select_slot(1)
+		elif event.is_action_pressed("quick_slot_next"):
+			carry_slots.next_slot()
+		elif event.is_action_pressed("quick_slot_previous"):
+			carry_slots.previous_slot()
+		elif event.is_action_pressed("drop_item"):
+			if not is_held_item_hidden:
+				carry_slots.drop_selected()
 
 func _physics_process(delta: float) -> void:
+	_update_interact_target()
+	
 	# Add the gravity.
 	if not is_on_floor():
 		velocity.y -= gravity * delta
@@ -147,3 +215,50 @@ func _can_stand() -> bool:
 	
 	var result = space_state.intersect_shape(query)
 	return result.is_empty()
+
+func _update_interact_target() -> void:
+	if not interact_ray: return
+	
+	var new_target: Interactable3D = null
+	
+	if interact_ray.is_colliding():
+		var collider = interact_ray.get_collider()
+		var candidate = _resolve_interactable(collider)
+		if candidate:
+			var dist = global_position.distance_to(candidate.global_position)
+			if dist <= candidate.interaction_range:
+				new_target = candidate
+				
+	if new_target != current_interactable:
+		current_interactable = new_target
+		interact_target_changed.emit(current_interactable)
+
+func _resolve_interactable(node: Node) -> Interactable3D:
+	if not node: return null
+	
+	if node is Interactable3D:
+		return node
+		
+	for child in node.get_children():
+		if child is Interactable3D:
+			return child
+			
+	var parent = node.get_parent()
+	if parent:
+		if parent is Interactable3D:
+			return parent
+		for child in parent.get_children():
+			if child is Interactable3D:
+				return child
+				
+	return null
+
+func take_damage(amount: float) -> void:
+	if amount <= 0: return
+	current_health = clamp(current_health - amount, 0.0, max_health)
+	health_changed.emit(current_health, max_health)
+	
+	if current_health <= 0:
+		# Very minimal placeholder for death
+		print("Player has died!")
+

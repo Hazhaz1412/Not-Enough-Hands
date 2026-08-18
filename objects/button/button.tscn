@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://objects/button/button.gd" id="1_btn"]
+[ext_resource type="Script" path="res://components/interactable_3d.gd" id="2_int"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_btn"]
+top_radius = 0.2
+bottom_radius = 0.2
+height = 0.1
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_btn"]
+radius = 0.2
+height = 0.1
+
+[node name="Button" type="StaticBody3D"]
+script = ExtResource("1_btn")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("CylinderMesh_btn")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_btn")
+
+[node name="Interactable3D" type="Node3D" parent="."]
+script = ExtResource("2_int")
+interaction_prompt = "Nhấn nút"

@@ -4,6 +4,14 @@
 [ext_resource type="Script" uid="uid://ckn40ad61nx2t" path="res://ui/stamina_bar.gd" id="3_03kx2"]
 [ext_resource type="Script" uid="uid://dugs30clyjof8" path="res://ui/interaction_prompt.gd" id="4_63pt7"]
 [ext_resource type="PackedScene" path="res://door/door.tscn" id="4_krg15"]
+[ext_resource type="PackedScene" path="res://objects/switch/switch.tscn" id="5_swtc"]
+[ext_resource type="PackedScene" path="res://objects/button/button.tscn" id="6_btn"]
+[ext_resource type="PackedScene" path="res://objects/item_pickup/item_pickup.tscn" id="7_item"]
+[ext_resource type="PackedScene" path="res://ui/bladder_bar.tscn" id="8_blad_ui"]
+[ext_resource type="PackedScene" path="res://objects/toilet/toilet.tscn" id="9_tl"]
+[ext_resource type="Resource" path="res://data/items/medkit.tres" id="10_medkit"]
+[ext_resource type="Resource" path="res://data/items/key.tres" id="11_key"]
+[ext_resource type="PackedScene" uid="uid://cx6y8v2q2a4e2" path="res://ui/carry_slots/carry_slots.tscn" id="12_carry_ui"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 
@@ -50,6 +58,30 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -4)
 [node name="TestDoor" parent="." instance=ExtResource("4_krg15")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 
+[node name="TestSwitch" parent="." instance=ExtResource("5_swtc")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 1, 0)
+
+[node name="TestButton" parent="." instance=ExtResource("6_btn")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1, 0)
+
+[node name="TestMedkit1" parent="." instance=ExtResource("7_item")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 2)
+item_data = ExtResource("10_medkit")
+amount = 2
+
+[node name="TestMedkit2" parent="." instance=ExtResource("7_item")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.5, 2)
+item_data = ExtResource("10_medkit")
+amount = 2
+
+[node name="TestKey" parent="." instance=ExtResource("7_item")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0.5, 2)
+item_data = ExtResource("11_key")
+amount = 1
+
+[node name="TestToilet" parent="." instance=ExtResource("9_tl")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 2)
+
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
 [node name="MarginContainer" type="MarginContainer" parent="CanvasLayer"]
@@ -82,6 +114,13 @@ theme_override_styles/fill = SubResource("StyleBoxFlat_krg15")
 show_percentage = false
 script = ExtResource("3_03kx2")
 player_path = NodePath("../../../../Player")
+
+[node name="BladderBar" parent="CanvasLayer/MarginContainer/VBoxContainer" instance=ExtResource("8_blad_ui")]
+layout_mode = 2
+player_path = NodePath("../../../../Player")
+
+[node name="CarrySlotsUI" parent="CanvasLayer" instance=ExtResource("12_carry_ui")]
+player_path = NodePath("../../Player")
 
 [node name="InteractionPrompt" type="CenterContainer" parent="CanvasLayer"]
 anchors_preset = 8

@@ -1,0 +1,26 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/bladder_bar.gd" id="1_blad"]
+
+[node name="BladderBar" type="VBoxContainer"]
+script = ExtResource("1_blad")
+
+[node name="Label" type="RichTextLabel" parent="."]
+layout_mode = 2
+bbcode_enabled = true
+text = "[center][b][color=#b2cccc]BLADDER: 0%[/color][/b][/center]"
+fit_content = true
+autowrap_mode = 0
+
+[node name="WarningLabel" type="RichTextLabel" parent="."]
+layout_mode = 2
+bbcode_enabled = true
+text = ""
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="ProgressBar" type="ProgressBar" parent="."]
+custom_minimum_size = Vector2(250, 10)
+layout_mode = 2
+show_percentage = false

@@ -1,0 +1,23 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://objects/switch/switch.gd" id="1_swtc"]
+[ext_resource type="Script" path="res://components/interactable_3d.gd" id="2_int"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_sw"]
+size = Vector3(0.2, 0.4, 0.1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sw"]
+size = Vector3(0.2, 0.4, 0.1)
+
+[node name="Switch" type="StaticBody3D"]
+script = ExtResource("1_swtc")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_sw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_sw")
+
+[node name="Interactable3D" type="Node3D" parent="."]
+script = ExtResource("2_int")
+interaction_prompt = "Bật đèn"

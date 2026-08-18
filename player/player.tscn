@@ -1,6 +1,10 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://player/player.gd" id="1_script"]
+[ext_resource type="Script" path="res://components/bladder_component.gd" id="2_blad"]
+[ext_resource type="Script" path="res://components/bladder_feedback_component.gd" id="3_feed"]
+[ext_resource type="Script" path="res://components/inventory_component.gd" id="4_inv"]
+[ext_resource type="Script" path="res://components/carry_slots_component.gd" id="5_carry"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 
@@ -17,3 +21,18 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
 
 [node name="InteractRay" type="RayCast3D" parent="CameraPivot/Camera3D" unique_id=1694598043]
 target_position = Vector3(0, 0, -2.5)
+
+[node name="FirstPersonItemHolder" type="Node3D" parent="CameraPivot/Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, -0.3, -0.5)
+
+[node name="BladderComponent" type="Node" parent="."]
+script = ExtResource("2_blad")
+
+[node name="BladderFeedbackComponent" type="Node" parent="."]
+script = ExtResource("3_feed")
+
+[node name="InventoryComponent" type="Node" parent="."]
+script = ExtResource("4_inv")
+
+[node name="CarrySlotsComponent" type="Node" parent="."]
+script = ExtResource("5_carry")

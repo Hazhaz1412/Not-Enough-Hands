@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://cfr68tqvaau8f"]
+
+[ext_resource type="Script" uid="uid://cx0hr3xchimgn" path="res://tests/electrical_device_test.gd" id="1_7hf4p"]
+[ext_resource type="Script" uid="uid://b524bfbh2wj0n" path="res://power/power_manager.gd" id="1_vryuv"]
+[ext_resource type="Script" uid="uid://bqgk7reojutcx" path="res://power/electrical_device.gd" id="2_7hf4p"]
+
+[node name="ElectricalDeviceTest" type="Node" unique_id=262728714]
+script = ExtResource("1_7hf4p")
+
+[node name="PowerManager" type="Node" parent="." unique_id=1891984826]
+script = ExtResource("1_vryuv")
+enable_power_drain = false
+
+[node name="DeviceA" type="Node" parent="." unique_id=362901758]
+script = ExtResource("2_7hf4p")
+
+[node name="DeviceB" type="Node" parent="." unique_id=1280625087]
+script = ExtResource("2_7hf4p")
+power_consumption = 500.0

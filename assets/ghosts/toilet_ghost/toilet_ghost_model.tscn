@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://dqfhv6dna0k34" path="res://assets/ghosts/toilet_ghost/toilet_ghost_model.glb" id="1_model"]
+
+[node name="ToiletGhostModel" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_model")]

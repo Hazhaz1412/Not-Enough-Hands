@@ -6,10 +6,11 @@ signal door_minigame_started(door: Node)
 signal door_minigame_finished()
 signal fusebox_minigame_started(fusebox: Node)
 signal hunter_trap_changed(trapped: bool)
+signal toilet_ghost_stun_changed(active: bool)
 
-@export var walk_speed: float = 2.45
-@export var crouch_speed: float = 1.35
-@export var sprint_speed_multiplier: float = 1.22
+@export var walk_speed: float = 4
+@export var crouch_speed: float = 1.75
+@export var sprint_speed_multiplier: float = 2.5
 @export var jump_velocity: float = 4.2
 @export var player_radius: float = 0.32
 @export var crouch_height: float = 1.05
@@ -64,6 +65,34 @@ var eyelid_closure: float = 0.0
 @export var mouse_sensitivity: float = 0.002
 @export var max_interaction_range: float = 10.0
 
+@export_category("Toilet Ghost Stun")
+## Getting caught by the Toilet Ghost is a severe scare, not a death. The
+## player keeps control but moves at 20% speed while the vision effect runs.
+@export var toilet_ghost_stun_duration: float = 7.0
+@export_range(0.05, 1.0) var toilet_ghost_stun_speed_multiplier: float = 0.2
+@export var toilet_ghost_stun_fade_duration: float = 0.75
+## Keep enough center light to read the room; the shortened beam and vignette
+## still make the ghost's arrival oppressive without making it pitch-black.
+@export_range(0.0, 1.0) var toilet_ghost_flashlight_energy_multiplier: float = 0.5
+@export_range(0.0, 1.0) var toilet_ghost_flashlight_range_multiplier: float = 0.55
+var toilet_ghost_stun_remaining: float = 0.0
+var _toilet_ghost_present: bool = false
+var _flashlight_base_energy: float = 0.0
+var _flashlight_base_range: float = 0.0
+
+## Temporary look-around constraint a minigame can impose (currently only
+## ToiletMinigame) - false/full-range outside any minigame, so normal
+## mouse-look is unaffected. yaw is clamped via an accumulator (rotate_y()
+## itself has no absolute angle to read back) while pitch is clamped
+## directly on camera_pivot.rotation.x like the un-constrained case already
+## does, just with configurable bounds instead of the hardcoded +-PI/2.
+var yaw_clamp_active: bool = false
+var yaw_clamp_min: float = 0.0
+var yaw_clamp_max: float = 0.0
+var accumulated_yaw: float = 0.0
+var pitch_clamp_min: float = -PI / 2.0
+var pitch_clamp_max: float = PI / 2.0
+
 @export_category("Development")
 @export var minigame_ghost_resume_grace: float = 1.5
 @export var dev_speed_multiplier: float = 3.0
@@ -78,6 +107,7 @@ var hunter_trap_source: Node3D
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var interact_ray: RayCast3D = $CameraPivot/Camera3D/InteractRay
+@onready var flashlight: SpotLight3D = $CameraPivot/Camera3D/Flashlight
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var blink_overlay: ColorRect = $BlinkOverlay/Eyelids
 @onready var blink_bar: ProgressBar = $BlinkUI/BlinkContainer/VBoxContainer/BlinkBar
@@ -86,6 +116,14 @@ var hunter_trap_source: Node3D
 @onready var footstep_players: Array[AudioStreamPlayer3D] = [$FootstepA, $FootstepB]
 @onready var door_minigame: CanvasLayer = get_node_or_null("DoorGhostMinigame") as CanvasLayer
 @onready var fusebox_minigame: CanvasLayer = get_node_or_null("FuseboxMinigame") as CanvasLayer
+@onready var equipment: PlayerEquipment = $Equipment
+@onready var bladder: PlayerBladder = $Bladder
+
+## Set by start_toilet_minigame() for the duration of this player's session -
+## ToiletMinigame lives per-toilet, not as a fixed child of Player like
+## DoorGhostMinigame, since only one toilet can ever be occupied by this
+## player at a time.
+var _active_toilet_minigame: Node = null
 
 var _minigame_ghost_safety_locks: int = 0
 var _minigame_ghost_release_remaining: float = 0.0
@@ -133,6 +171,16 @@ func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if interact_ray:
 		interact_ray.target_position = Vector3(0, 0, -max_interaction_range)
+	if flashlight:
+		_flashlight_base_energy = flashlight.light_energy
+		_flashlight_base_range = flashlight.spot_range
+
+
+## Status visuals keep ticking while a minigame temporarily disables this
+## body's physics. That makes a seven-second Toilet Ghost stun seven seconds
+## of real gameplay time, including the brief camera-release transition.
+func _process(delta: float) -> void:
+	_update_toilet_ghost_stun(delta)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_alive:
@@ -141,21 +189,41 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_mouse_capture()
 		get_viewport().set_input_as_handled()
 		return
-	if is_any_minigame_active():
+	if is_door_minigame_active():
 		return
 
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-		# Rotate player horizontally
-		rotate_y(-event.relative.x * mouse_sensitivity)
-		
-		# Rotate camera vertically
+		# Rotate player horizontally - clamped to a limited look-around
+		# window while yaw_clamp_active (e.g. ToiletMinigame), full range
+		# otherwise.
+		var yaw_delta: float = -event.relative.x * mouse_sensitivity
+		if yaw_clamp_active:
+			var new_yaw: float = clamp(accumulated_yaw + yaw_delta, yaw_clamp_min, yaw_clamp_max)
+			yaw_delta = new_yaw - accumulated_yaw
+			accumulated_yaw = new_yaw
+		rotate_y(yaw_delta)
+
+		# Rotate camera vertically, clamped to pitch_clamp_min/max (+-90
+		# degrees normally, narrower while a minigame constrains it).
 		camera_pivot.rotate_x(-event.relative.y * mouse_sensitivity)
-		
-		# Clamp vertical rotation (-90 to 90 degrees)
-		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, -PI/2, PI/2)
-		
+		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, pitch_clamp_min, pitch_clamp_max)
+
+	if is_any_minigame_active():
+		return
+
 	if event.is_action_pressed("interact"):
 		_try_interact()
+	if event.is_action_pressed("drop_item"):
+		_drop_selected_item()
+	if event.is_action_pressed("select_slot_1"):
+		equipment.select_slot(0)
+	if event.is_action_pressed("select_slot_2"):
+		equipment.select_slot(1)
+	if event is InputEventMouseButton and event.pressed:
+		# Only 2 slots exist, so "next" and "previous" are both just "the
+		# other slot" - same select_slot() the keyboard shortcuts use.
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			equipment.select_slot(1 - equipment.selected_slot)
 
 
 func toggle_mouse_capture() -> void:
@@ -185,6 +253,12 @@ func get_interaction_target() -> Node:
 
 	var target := interact_ray.get_collider() as Node
 	while target and target != get_tree().root:
+		# Component-based interactables: a child node literally named
+		# "Interactable" is the actual interaction target, not its parent -
+		# the player calls interact()/can_interact() on the component itself.
+		var component := target.get_node_or_null("Interactable")
+		if component and component.has_method("interact"):
+			return component
 		if target.has_method("interact"):
 			return target
 		target = target.get_parent()
@@ -194,6 +268,9 @@ func get_interaction_target() -> Node:
 
 func can_interact_with(target: Node) -> bool:
 	if not target or not interact_ray.is_colliding():
+		return false
+
+	if target.has_method("can_interact") and not target.can_interact():
 		return false
 
 	var allowed_range: float = target.interaction_range if "interaction_range" in target else 2.5
@@ -206,6 +283,38 @@ func _try_interact() -> void:
 	var target := get_interaction_target()
 	if target and can_interact_with(target):
 		target.interact(self)
+
+
+## Called by a PickupItem's own script when its Interactable fires - mirrors
+## set_threat_from()/kill_by_ghost(): other systems call into the player's
+## public API, the player never reaches into item internals. Returns false
+## (leaving the item untouched in the world) when both equipment slots are
+## already full.
+func try_pick_up_item(item: Node3D) -> bool:
+	if not equipment.try_add_item(item):
+		return false
+	if item.has_method("set_held"):
+		item.set_held(true)
+	item.reparent(self)
+	return true
+
+
+## Q drops whatever is in the currently selected equipment slot; does nothing
+## if that slot is empty.
+func _drop_selected_item() -> void:
+	var item: Node3D = equipment.remove_selected()
+	if item == null:
+		return
+	item.reparent(get_tree().root)
+	item.global_position = (
+		global_position
+		+ Vector3(0, standing_camera_height, 0)
+		+ (-global_transform.basis.z) * 1.2
+	)
+	item.global_rotation = Vector3.ZERO
+	if item.has_method("set_held"):
+		item.set_held(false)
+
 
 func _physics_process(delta: float) -> void:
 	_update_minigame_ghost_safety(delta)
@@ -285,6 +394,8 @@ func _physics_process(delta: float) -> void:
 	if dev_fast_movement:
 		current_speed *= maxf(dev_speed_multiplier, 1.0)
 		current_stamina = max_stamina
+	if is_toilet_ghost_stunned():
+		current_speed *= get_toilet_ghost_speed_multiplier()
 			
 	current_stamina = clamp(current_stamina, 0.0, max_stamina)
 
@@ -353,6 +464,48 @@ func force_blink(duration: float = -1.0) -> void:
 		eyes_closed_changed.emit(true)
 
 
+## Minigame-safe variant of force_blink(): the eyelid animation and
+## forced_blink_remaining's own countdown are both driven by _update_blink(),
+## which only runs from _physics_process() - and minigames such as the
+## toilet's disable physics processing for their whole duration to lock the
+## player. Plain force_blink() would therefore set the logical state but
+## never actually animate, and would only resolve once physics processing
+## resumes after the minigame already ended (a blink playing out of
+## context). This sets the eyelid shader parameter directly instead -
+## mirroring _open_eyes_for_minigame()'s existing "set it directly" pattern
+## for the opposite case - so the close reads immediately regardless of
+## whether physics processing is running. The caller owns reopening (see
+## end_forced_blink()) since there is no running update loop left to expire
+## forced_blink_remaining on its own.
+func force_blink_now() -> void:
+	if dev_clear_vision or not is_alive:
+		return
+	forced_blink_remaining = forced_blink_duration
+	eyelid_closure = 1.0
+	var eyelid_material := blink_overlay.material as ShaderMaterial
+	if eyelid_material:
+		eyelid_material.set_shader_parameter('closure', 1.0)
+	if not eyes_closed:
+		eyes_closed = true
+		eyes_closed_changed.emit(true)
+
+
+## Reopens eyes closed by force_blink_now(), independent of _physics_process -
+## see that method's doc comment for why this is needed. Safe to call even
+## if force_blink_now() was never actually called (e.g. cleanup running
+## unconditionally).
+func end_forced_blink() -> void:
+	if not eyes_closed and forced_blink_remaining <= 0.0 and eyelid_closure <= 0.0:
+		return
+	forced_blink_remaining = 0.0
+	eyelid_closure = 0.0
+	eyes_closed = false
+	var eyelid_material := blink_overlay.material as ShaderMaterial
+	if eyelid_material:
+		eyelid_material.set_shader_parameter('closure', 0.0)
+	eyes_closed_changed.emit(false)
+
+
 func set_statue_threat(amount: float) -> void:
 	set_threat_from('statue', amount)
 
@@ -395,6 +548,78 @@ func kill_by_ghost(ghost: Node3D) -> void:
 	killed_by_ghost.emit(ghost)
 
 
+## Public status-effect API used by the Toilet Ghost minigame. Reapplying the
+## scare refreshes (never stacks) the duration, so the speed multiplier cannot
+## be compounded into an accidental immobilize.
+func apply_toilet_ghost_stun(duration: float = -1.0) -> bool:
+	if not is_alive or dev_invincible:
+		return false
+	var resolved_duration := (
+		toilet_ghost_stun_duration
+		if duration < 0.0
+		else duration
+	)
+	if resolved_duration <= 0.0:
+		return false
+	var was_active := is_toilet_ghost_stunned()
+	toilet_ghost_stun_remaining = maxf(toilet_ghost_stun_remaining, resolved_duration)
+	velocity.x *= get_toilet_ghost_speed_multiplier()
+	velocity.z *= get_toilet_ghost_speed_multiplier()
+	_set_toilet_ghost_stun_visual(1.0)
+	if not was_active:
+		toilet_ghost_stun_changed.emit(true)
+	return true
+
+
+func is_toilet_ghost_stunned() -> bool:
+	return toilet_ghost_stun_remaining > 0.0
+
+
+func get_toilet_ghost_speed_multiplier() -> float:
+	return clampf(toilet_ghost_stun_speed_multiplier, 0.05, 1.0)
+
+
+func _update_toilet_ghost_stun(delta: float) -> void:
+	if toilet_ghost_stun_remaining <= 0.0:
+		return
+	toilet_ghost_stun_remaining = maxf(toilet_ghost_stun_remaining - delta, 0.0)
+	var visual_strength := clampf(
+		toilet_ghost_stun_remaining / maxf(toilet_ghost_stun_fade_duration, 0.01),
+		0.0,
+		1.0
+	)
+	_set_toilet_ghost_stun_visual(visual_strength)
+	if toilet_ghost_stun_remaining <= 0.0:
+		toilet_ghost_stun_changed.emit(false)
+
+
+func _set_toilet_ghost_stun_visual(strength: float) -> void:
+	var overlay_material := horror_overlay_rect.material as ShaderMaterial
+	if overlay_material:
+		overlay_material.set_shader_parameter("stun_strength", clampf(strength, 0.0, 1.0))
+
+
+## Called by the Toilet Ghost only while its body is actually visible. The
+## narrowed, dim flashlight makes finding it a visual task; it does not reveal
+## a lurch through an audio cue.
+func set_toilet_ghost_presence(present: bool) -> void:
+	_toilet_ghost_present = present
+	if flashlight:
+		flashlight.light_energy = (
+			_flashlight_base_energy * toilet_ghost_flashlight_energy_multiplier
+			if present
+			else _flashlight_base_energy
+		)
+		flashlight.spot_range = (
+			_flashlight_base_range * toilet_ghost_flashlight_range_multiplier
+			if present
+			else _flashlight_base_range
+		)
+	var overlay_material := horror_overlay_rect.material as ShaderMaterial
+	if overlay_material:
+		overlay_material.set_shader_parameter("toilet_presence", 1.0 if present else 0.0)
+
+
 func start_door_minigame(door: Node) -> bool:
 	if not is_alive \
 		or not door_minigame \
@@ -434,12 +659,68 @@ func is_fusebox_minigame_active() -> bool:
 		and bool(fusebox_minigame.call("is_running"))
 
 
+## Called by a Toilet's own script when interacted with - mirrors
+## start_door_minigame(): the toilet never reaches into player internals,
+## it just calls this public API the same way PickupItem/LightSwitch do.
+## Unlike DoorGhostMinigame, ToiletMinigame is owned per-toilet (a child of
+## the Toilet, matching feat/game-character-hoang's node structure) rather
+## than pre-instantiated per-player, so it's resolved from `toilet` here and
+## the reference kept only for as long as this player's session lasts.
+func start_toilet_minigame(toilet: Node) -> bool:
+	if not is_alive or is_any_minigame_active() or not is_instance_valid(toilet):
+		return false
+	var minigame: Node = toilet.get_node_or_null("ToiletMinigame")
+	if not minigame or not minigame.has_method("start"):
+		return false
+	if not bool(minigame.call("start", self, toilet)):
+		return false
+	_active_toilet_minigame = minigame
+	return true
+
+
+func is_toilet_minigame_active() -> bool:
+	return is_instance_valid(_active_toilet_minigame) \
+		and _active_toilet_minigame.has_method("is_running") \
+		and bool(_active_toilet_minigame.call("is_running"))
+
+
 ## Shared "freeze movement/look, don't fight the minigame for input" gate.
+## Covers every minigame that can own the screen: door, fusebox, and toilet.
 ## The fusebox minigame deliberately never calls acquire_minigame_ghost_safety
 ## - a miss there is meant to be heard - so ghost suspension stays keyed off
 ## the door minigame alone; this only covers input/movement ownership.
 func is_any_minigame_active() -> bool:
-	return is_door_minigame_active() or is_fusebox_minigame_active()
+	return is_door_minigame_active() or is_fusebox_minigame_active() or is_toilet_minigame_active()
+
+
+## Thin delegation to this player's own Bladder component - other systems
+## (the toilet minigame, its HUD) call these instead of touching bladder
+## internals directly, the same way try_pick_up_item()/equipment work.
+func get_bladder() -> float:
+	return bladder.get_bladder()
+
+
+func get_bladder_ratio() -> float:
+	return bladder.get_bladder_ratio()
+
+
+func add_bladder(amount: float) -> void:
+	bladder.add_bladder(amount)
+
+
+func reduce_bladder(amount: float) -> void:
+	bladder.reduce_bladder(amount)
+
+
+func set_bladder(value: float) -> void:
+	bladder.set_bladder(value)
+
+
+## Called by ToiletMinigame on success - the only bladder ever touched is
+## this player's own, and only because this player is the one who reached
+## the toilet minigame's success state.
+func reset_bladder() -> void:
+	bladder.reset_bladder()
 
 
 func acquire_minigame_ghost_safety() -> void:

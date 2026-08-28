@@ -46,6 +46,10 @@ const FURNITURE_DINING_TABLE: PackedScene = preload(FURNITURE_ROOT + "Dining Tab
 const FURNITURE_CHAIR: PackedScene = preload(FURNITURE_ROOT + "Chair.fbx")
 const FURNITURE_BATHTUB: PackedScene = preload(FURNITURE_ROOT + "Bathtub.fbx")
 const FURNITURE_TOILET: PackedScene = preload(FURNITURE_ROOT + "Toilet.fbx")
+## Invisible interaction hitbox placed alongside the decorative FURNITURE_TOILET
+## mesh - kept separate (not a modular_house_asset) so it isn't mistaken for a
+## kit piece by the "every modular asset comes from assets/map/" layout check.
+const TOILET_INTERACTABLE: PackedScene = preload("res://toilet/toilet.tscn")
 const FURNITURE_FRIDGE: PackedScene = preload(FURNITURE_ROOT + "Fridge.fbx")
 const FURNITURE_OVEN: PackedScene = preload(FURNITURE_ROOT + "Oven.fbx")
 const FURNITURE_COUNTER: PackedScene = preload(FURNITURE_ROOT + "Counter Connected.fbx")
@@ -494,7 +498,8 @@ func _build_room_props(basement: Node3D, ground: Node3D, upper: Node3D, attic: N
 	# Keep the bathroom's door-to-tub aisle open. The toilet used to sit around
 	# the middle of that approach; tuck its cistern against the south wall and
 	# turn the bowl into the room like a normal fixture.
-	_add_asset(FURNITURE_TOILET, upper_props, "Toilet", Vector3(5.1, FLOOR_HEIGHT, 0.65), PI)
+	_add_asset(FURNITURE_TOILET, upper_props, "Toilet", Vector3(5.1, FLOOR_HEIGHT, 0.65))
+	_place_toilet_interactable(upper_props, Vector3(5.1, FLOOR_HEIGHT, 0.65), 0.0)
 	_add_asset(FURNITURE_SINK, upper_props, "BathroomSink", Vector3(5.2, FLOOR_HEIGHT, 5.5))
 	_add_asset(FURNITURE_MIRROR, upper_props, "BathroomMirror", Vector3(5.2, FLOOR_HEIGHT + 1.5, 5.88))
 	_add_asset(FURNITURE_WASHER, upper_props, "BathroomWasher", Vector3(8.1, FLOOR_HEIGHT, 1.2), PI)
@@ -753,6 +758,18 @@ func _add_asset(
 	instance.add_to_group("modular_house_asset")
 	parent.add_child(instance)
 	return instance
+
+
+## Places the interactive toilet hitbox at the same transform as the
+## decorative FURNITURE_TOILET mesh placed just before it. Deliberately not
+## routed through _add_asset(): it isn't a modular kit piece, so it must not
+## join the modular_house_asset group the layout smoke test scrutinizes.
+func _place_toilet_interactable(parent: Node3D, position: Vector3, rotation_y: float) -> void:
+	var toilet := TOILET_INTERACTABLE.instantiate() as Node3D
+	toilet.name = "ToiletInteractable"
+	toilet.position = position
+	toilet.rotation.y = rotation_y
+	parent.add_child(toilet)
 
 
 func _add_container(parent: Node3D, container_name: String) -> Node3D:

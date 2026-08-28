@@ -4,6 +4,9 @@
 [ext_resource type="Script" uid="uid://ckn40ad61nx2t" path="res://ui/stamina_bar.gd" id="3_03kx2"]
 [ext_resource type="Script" uid="uid://dugs30clyjof8" path="res://ui/interaction_prompt.gd" id="4_63pt7"]
 [ext_resource type="PackedScene" path="res://door/door.tscn" id="4_krg15"]
+[ext_resource type="PackedScene" path="res://tests/test_interactable_object.tscn" id="5_interactable"]
+[ext_resource type="PackedScene" path="res://items/pickup_item.tscn" id="6_pickup_item"]
+[ext_resource type="PackedScene" path="res://toilet/toilet.tscn" id="7_toilet"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 
@@ -49,6 +52,24 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -4)
 
 [node name="TestDoor" parent="." instance=ExtResource("4_krg15")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="TestInteractableObject" parent="." instance=ExtResource("5_interactable")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0.1, -4)
+
+[node name="PickupItemA" parent="." instance=ExtResource("6_pickup_item")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0.3, -4)
+display_name = "ItemA"
+
+[node name="PickupItemB" parent="." instance=ExtResource("6_pickup_item")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.3, -4)
+display_name = "ItemB"
+
+[node name="PickupItemC" parent="." instance=ExtResource("6_pickup_item")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0.3, -4)
+display_name = "ItemC"
+
+[node name="TestToilet" parent="." instance=ExtResource("7_toilet")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.1, -4)
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 

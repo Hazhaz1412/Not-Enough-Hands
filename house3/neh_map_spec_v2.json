@@ -12,7 +12,8 @@
   ],
 
   "rooms": [
-    { "id": "R_PARLOR", "name": "Phong tiep khach", "level": 0, "rect": [1, 1, 13, 4], "doors": [[11, 5], [3, 5]], "kind": "lounge" },
+    { "id": "R_PARLOR", "name": "Phong tiep khach", "level": 0, "rect": [1, 1, 10, 4], "doors": [[8, 5], [3, 5]], "kind": "lounge" },
+    { "id": "R_WC_GROUND_NORTH", "name": "Nha ve sinh tang tret phia bac", "level": 0, "rect": [12, 3, 13, 4], "doors": [[12, 5]], "kind": "wc" },
     { "id": "R_FOYER", "name": "Dai sanh", "level": 0, "rect": [15, 1, 24, 4], "doors": [[19, 5]], "kind": "hall" },
     { "id": "R_STUDY", "name": "Phong lam viec", "level": 0, "rect": [26, 1, 38, 4], "doors": [[28, 5], [36, 5]], "kind": "study" },
     { "id": "R_LIVING", "name": "Phong khach", "level": 0, "rect": [1, 6, 5, 14], "doors": [[6, 10]], "kind": "lounge" },
@@ -23,17 +24,20 @@
     { "id": "R_ATRIUM", "name": "San trong", "level": 0, "rect": [22, 9, 29, 12], "doors": [[25, 8], [25, 13], [21, 10], [30, 11]], "kind": "atrium" },
     { "id": "R_BILLIARD", "name": "Phong bi-a", "level": 0, "rect": [10, 17, 17, 20], "doors": [[13, 16], [13, 21]], "kind": "lounge" },
     { "id": "R_CHAPEL", "name": "Nha nguyen", "level": 0, "rect": [22, 17, 29, 20], "doors": [[25, 16], [25, 21]], "kind": "chapel" },
-    { "id": "R_DINING", "name": "Phong an", "level": 0, "rect": [1, 25, 13, 28], "doors": [[11, 24], [14, 26]], "kind": "dining" },
+    { "id": "R_WC_GROUND_SOUTH", "name": "Nha ve sinh tang tret phia nam", "level": 0, "rect": [1, 25, 2, 26], "doors": [[2, 24]], "kind": "wc" },
+    { "id": "R_DINING", "name": "Phong an", "level": 0, "rect": [4, 25, 13, 28], "doors": [[11, 24], [14, 26]], "kind": "dining" },
     { "id": "R_BALLROOM", "name": "Phong khieu vu", "level": 0, "rect": [15, 25, 24, 28], "doors": [[19, 24], [25, 26]], "kind": "hall" },
     { "id": "R_UTILITY", "name": "Phong phu tro", "level": 0, "rect": [26, 25, 38, 28], "doors": [[28, 24]], "kind": "utility" },
 
     { "id": "R_BED_1", "name": "Phong ngu 1", "level": 1, "rect": [1, 1, 13, 4], "doors": [[11, 5], [3, 5]], "kind": "bedroom" },
     { "id": "R_UP_HALL", "name": "Sanh tren", "level": 1, "rect": [15, 1, 24, 4], "doors": [[19, 5]], "kind": "hall" },
-    { "id": "R_BED_2", "name": "Phong ngu 2", "level": 1, "rect": [26, 1, 38, 4], "doors": [[28, 5], [36, 5]], "kind": "bedroom" },
+    { "id": "R_WC_UP_NORTH", "name": "Nha ve sinh lau tren phia bac", "level": 1, "rect": [26, 3, 27, 4], "doors": [[27, 5]], "kind": "wc" },
+    { "id": "R_BED_2", "name": "Phong ngu 2", "level": 1, "rect": [29, 1, 38, 4], "doors": [[32, 5], [36, 5]], "kind": "bedroom" },
     { "id": "R_MASTER", "name": "Phong ngu chinh", "level": 1, "rect": [1, 6, 5, 14], "doors": [[6, 10]], "kind": "master" },
-    { "id": "R_NURSERY", "name": "Phong tre em", "level": 1, "rect": [1, 16, 5, 23], "doors": [[6, 19]], "kind": "bedroom" },
+    { "id": "R_NURSERY", "name": "Phong tre em", "level": 1, "rect": [1, 16, 5, 20], "doors": [[6, 19]], "kind": "bedroom" },
+    { "id": "R_WC_UP_SOUTH", "name": "Nha ve sinh lau tren phia nam", "level": 1, "rect": [4, 22, 5, 23], "doors": [[6, 22]], "kind": "wc" },
     { "id": "R_BED_3", "name": "Phong ngu 3", "level": 1, "rect": [34, 6, 38, 14], "doors": [[33, 10]], "kind": "bedroom" },
-    { "id": "R_BATH_MAIN", "name": "Phong tam lon", "level": 1, "rect": [34, 16, 38, 23], "doors": [[33, 19]], "kind": "bath" },
+    { "id": "R_BATH_MAIN", "name": "Phong tam chinh", "level": 1, "rect": [34, 18, 37, 21], "doors": [[33, 19]], "kind": "bath" },
     { "id": "R_STUDY_UP", "name": "Thu phong", "level": 1, "rect": [10, 9, 17, 12], "doors": [[13, 8], [13, 13]], "kind": "study" },
     { "id": "R_LINEN", "name": "Kho chan man", "level": 1, "rect": [10, 17, 17, 20], "doors": [[13, 16], [13, 21]], "kind": "storage" },
     { "id": "R_SERVANT", "name": "Phong gia nhan", "level": 1, "rect": [22, 17, 29, 20], "doors": [[25, 16], [25, 21]], "kind": "bedroom" },
@@ -124,7 +128,8 @@
 
   "single_door_rooms": [
     "R_ATTIC", "R_COAL", "R_WINE",
-    "R_LIBRARY", "R_PANTRY", "R_NURSERY", "R_BATH_MAIN", "R_BOILER", "R_ATRIUM_BALCONY"
+    "R_LIBRARY", "R_PANTRY", "R_NURSERY", "R_BATH_MAIN", "R_BOILER", "R_ATRIUM_BALCONY",
+    "R_WC_GROUND_NORTH", "R_WC_GROUND_SOUTH", "R_WC_UP_NORTH", "R_WC_UP_SOUTH"
   ],
 
   "night": { "start_hour": 0, "end_hour": 6, "real_seconds": 1080 },

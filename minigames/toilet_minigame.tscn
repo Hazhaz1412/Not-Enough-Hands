@@ -1,0 +1,161 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://minigames/toilet_minigame.gd" id="1_toilet_minigame"]
+[ext_resource type="PackedScene" path="res://assets/ghosts/toilet_ghost/toilet_ghost.tscn" id="2_toilet_ghost"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_liquid"]
+transparency = 1
+albedo_color = Color(0.4, 0.7, 1, 0.8)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_liquid"]
+top_radius = 0.01
+bottom_radius = 0.01
+height = 0.7
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hand"]
+albedo_color = Color(0.9, 0.7, 0.5, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_hand"]
+radius = 0.04
+height = 0.15
+
+[node name="ToiletMinigame" type="Node3D"]
+script = ExtResource("1_toilet_minigame")
+
+[node name="LiquidStream" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0.2)
+material_override = SubResource("StandardMaterial3D_liquid")
+mesh = SubResource("CylinderMesh_liquid")
+
+[node name="ToiletTarget" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0.2)
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="MarginContainer" type="MarginContainer" parent="HUDLayer"]
+anchors_preset = 10
+anchor_right = 1.0
+theme_override_constants/margin_top = 40
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDLayer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="FeedbackLabel" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "BALANCE"
+horizontal_alignment = 1
+
+[node name="InstructionLabel" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "MOVE MOUSE TO AIM + LOOK AROUND  •  A/D: LEFT/RIGHT  •  E: STOP"
+horizontal_alignment = 1
+
+[node name="BalanceTrack" type="Control" parent="HUDLayer/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(360, 24)
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="Background" type="ColorRect" parent="HUDLayer/MarginContainer/VBoxContainer/BalanceTrack"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.18, 0.035, 0.035, 0.9)
+
+[node name="WarningZone" type="ColorRect" parent="HUDLayer/MarginContainer/VBoxContainer/BalanceTrack"]
+layout_mode = 1
+anchor_left = 0.3
+anchor_right = 0.7
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.72, 0.55, 0.08, 0.95)
+
+[node name="SafeZone" type="ColorRect" parent="HUDLayer/MarginContainer/VBoxContainer/BalanceTrack"]
+layout_mode = 1
+anchor_left = 0.43
+anchor_right = 0.57
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.12, 0.68, 0.28, 1)
+
+[node name="Indicator" type="ColorRect" parent="HUDLayer/MarginContainer/VBoxContainer/BalanceTrack"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -3.0
+offset_right = 3.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.85, 0.95, 1, 1)
+
+[node name="ComboLabel" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "LOCKING  0%"
+horizontal_alignment = 1
+
+[node name="DangerNoiseBar" type="ProgressBar" parent="HUDLayer/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(260, 8)
+layout_mode = 2
+size_flags_horizontal = 4
+max_value = 1.0
+step = 0.01
+show_percentage = false
+
+[node name="StatusArea" type="HBoxContainer" parent="HUDLayer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 40
+alignment = 1
+
+[node name="BladderContainer" type="VBoxContainer" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/BladderContainer"]
+layout_mode = 2
+text = "Bladder"
+
+[node name="ProgressBar" type="ProgressBar" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/BladderContainer"]
+custom_minimum_size = Vector2(150, 15)
+layout_mode = 2
+value = 100.0
+
+[node name="HealthContainer" type="VBoxContainer" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/HealthContainer"]
+layout_mode = 2
+text = "Health"
+
+[node name="ProgressBar" type="ProgressBar" parent="HUDLayer/MarginContainer/VBoxContainer/StatusArea/HealthContainer"]
+custom_minimum_size = Vector2(150, 15)
+layout_mode = 2
+value = 100.0
+
+[node name="BalanceVisual" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0.7)
+
+[node name="AssetAnchor" type="Node3D" parent="BalanceVisual"]
+
+[node name="LeftHand" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_hand")
+mesh = SubResource("CapsuleMesh_hand")
+
+[node name="RightHand" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_hand")
+mesh = SubResource("CapsuleMesh_hand")
+
+[node name="ToiletGhost" parent="." instance=ExtResource("2_toilet_ghost")]

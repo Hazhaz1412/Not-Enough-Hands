@@ -25,7 +25,7 @@ script = ExtResource("1_script")
 offset_left = 20.0
 offset_top = 20.0
 offset_right = 420.0
-offset_bottom = 760.0
+offset_bottom = 700.0
 theme_override_styles/panel = SubResource("StyleBox_panel")
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
@@ -35,93 +35,119 @@ theme_override_constants/margin_top = 18
 theme_override_constants/margin_right = 20
 theme_override_constants/margin_bottom = 18
 
-[node name="Content" type="VBoxContainer" parent="Panel/Margin"]
+[node name="Scroll" type="ScrollContainer" parent="Panel/Margin"]
 layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="Content" type="VBoxContainer" parent="Panel/Margin/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="Title" type="Label" parent="Panel/Margin/Content"]
+[node name="Title" type="Label" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.42, 1, 0.82, 1)
 theme_override_font_sizes/font_size = 25
 text = "DEV TOOLS  [F1]"
 
-[node name="Hint" type="Label" parent="Panel/Margin/Content"]
+[node name="Hint" type="Label" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.72, 0.78, 1)
 text = "Alt: hiện/bắt lại chuột"
 
-[node name="SeparatorA" type="HSeparator" parent="Panel/Margin/Content"]
+[node name="SeparatorA" type="HSeparator" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 
-[node name="Invincible" type="CheckButton" parent="Panel/Margin/Content"]
+[node name="Invincible" type="CheckButton" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 text = "Bất tử"
 
-[node name="FastMovement" type="CheckButton" parent="Panel/Margin/Content"]
+[node name="FastMovement" type="CheckButton" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 text = "Chạy nhanh x3"
 
-[node name="Noclip" type="CheckButton" parent="Panel/Margin/Content"]
+[node name="Noclip" type="CheckButton" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 text = "Bay xuyên tường"
 
-[node name="EntranceXray" type="CheckButton" parent="Panel/Margin/Content"]
+[node name="EntranceXray" type="CheckButton" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 text = "Soi 7 cửa xuyên tường"
 
-[node name="BrightVision" type="CheckButton" parent="Panel/Margin/Content"]
+[node name="BrightVision" type="CheckButton" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 text = "Sáng tối đa (nhìn trong tối)"
 
-[node name="SeparatorB" type="HSeparator" parent="Panel/Margin/Content"]
+[node name="BladderRow" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BladderLabel" type="Label" parent="Panel/Margin/Scroll/Content/BladderRow"]
+layout_mode = 2
+text = "Buồn tiểu"
+
+[node name="BladderSlider" type="HSlider" parent="Panel/Margin/Scroll/Content/BladderRow"]
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+step = 1.0
+
+[node name="BladderValue" type="Label" parent="Panel/Margin/Scroll/Content/BladderRow"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "0%"
+horizontal_alignment = 2
+
+[node name="SeparatorB" type="HSeparator" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 
-[node name="SpawnStatue" type="Button" parent="Panel/Margin/Content"]
+[node name="SpawnStatue" type="Button" parent="Panel/Margin/Scroll/Content"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "GỌI STATUE XUẤT HIỆN"
 
-[node name="SpawnCrawler" type="Button" parent="Panel/Margin/Content"]
+[node name="SpawnCrawler" type="Button" parent="Panel/Margin/Scroll/Content"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "GỌI CRAWLER XUẤT HIỆN"
 
-[node name="SpawnHunter" type="Button" parent="Panel/Margin/Content"]
+[node name="SpawnHunter" type="Button" parent="Panel/Margin/Scroll/Content"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "GỌI THỢ SĂN VÀO NHÀ"
 
-[node name="DoorTitle" type="Label" parent="Panel/Margin/Content"]
+[node name="DoorTitle" type="Label" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 text = "Ép ma tấn công một cửa:"
 
-[node name="DoorRow" type="HBoxContainer" parent="Panel/Margin/Content"]
+[node name="DoorRow" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Entrance" type="OptionButton" parent="Panel/Margin/Content/DoorRow"]
+[node name="Entrance" type="OptionButton" parent="Panel/Margin/Scroll/Content/DoorRow"]
 custom_minimum_size = Vector2(110, 42)
 layout_mode = 2
 
-[node name="AttackDoor" type="Button" parent="Panel/Margin/Content/DoorRow"]
+[node name="AttackDoor" type="Button" parent="Panel/Margin/Scroll/Content/DoorRow"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "TẤN CÔNG NGAY"
 
-[node name="ForceBlackout" type="Button" parent="Panel/Margin/Content"]
+[node name="ForceBlackout" type="Button" parent="Panel/Margin/Scroll/Content"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "NGẮT ĐIỆN NGAY"
 
-[node name="Status" type="Label" parent="Panel/Margin/Content"]
+[node name="Status" type="Label" parent="Panel/Margin/Scroll/Content"]
 custom_minimum_size = Vector2(0, 58)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.84, 0.91, 0.88, 1)
 text = "Sẵn sàng."
 autowrap_mode = 2
 
-[node name="Close" type="Button" parent="Panel/Margin/Content"]
+[node name="Close" type="Button" parent="Panel/Margin/Scroll/Content"]
 custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
 text = "ĐÓNG [F1]"

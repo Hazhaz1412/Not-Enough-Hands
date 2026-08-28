@@ -1,0 +1,150 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://minigames/toilet_ghost_caught.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/ghosts/toilet_ghost/toilet_ghost_model.tscn" id="2_model"]
+[ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_jumpscare.mp3" id="3_sting"]
+
+[sub_resource type="Animation" id="Animation_reset"]
+length = 0.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/Viewport/World/ModelRoot:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, -1.1376, -1.7)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("VisualRoot/Viewport/World/ModelRoot:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 3.1415927, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("VisualRoot/Viewport/World/ModelRoot:scale")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0.72, 0.72, 0.72)]
+}
+
+[sub_resource type="Animation" id="Animation_caught"]
+resource_name = "caught"
+length = 1.28
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/Viewport/World/ModelRoot:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2, 0.34, 0.58, 0.86, 1.28),
+"transitions": PackedFloat32Array(0.35, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0, -1.1376, -1.7), Vector3(-0.05, -1.264, -1.32), Vector3(0.035, -1.2008, -1.12), Vector3(-0.025, -1.4378, -0.82), Vector3(0.02, -1.5484, -0.56), Vector3(-0.01, -1.7064, -0.38), Vector3(0, -1.8328, -0.31)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("VisualRoot/Viewport/World/ModelRoot:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2, 0.34, 0.58, 0.86, 1.28),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0, 3.1415927, 0), Vector3(-0.025, 3.17, -0.025), Vector3(0.02, 3.11, 0.02), Vector3(-0.015, 3.16, -0.015), Vector3(0.01, 3.13, 0.01), Vector3(0, 3.1415927, 0), Vector3(0, 3.1415927, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("VisualRoot/Viewport/World/ModelRoot:scale")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2, 0.34, 0.58, 0.86, 1.28),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0.72, 0.72, 0.72), Vector3(0.8, 0.8, 0.8), Vector3(0.76, 0.76, 0.76), Vector3(0.91, 0.91, 0.91), Vector3(0.98, 0.98, 0.98), Vector3(1.08, 1.08, 1.08), Vector3(1.16, 1.16, 1.16)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_caught"]
+_data = {
+"RESET": SubResource("Animation_reset"),
+"caught": SubResource("Animation_caught")
+}
+
+[sub_resource type="Environment" id="Environment_caught"]
+background_mode = 2
+background_color = Color(0, 0, 0, 0)
+ambient_light_source = 3
+ambient_light_color = Color(0.18, 0.2, 0.34, 1)
+ambient_light_energy = 1.6
+
+[node name="ToiletGhostCaught" type="CanvasLayer"]
+layer = 135
+process_mode = 3
+script = ExtResource("1_script")
+
+[node name="VisualRoot" type="SubViewportContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+stretch = true
+
+[node name="Viewport" type="SubViewport" parent="VisualRoot"]
+transparent_bg = true
+handle_input_locally = false
+size = Vector2i(1152, 648)
+render_target_update_mode = 4
+own_world_3d = true
+
+[node name="World" type="Node3D" parent="VisualRoot/Viewport"]
+
+[node name="Environment" type="WorldEnvironment" parent="VisualRoot/Viewport/World"]
+environment = SubResource("Environment_caught")
+
+[node name="Camera3D" type="Camera3D" parent="VisualRoot/Viewport/World"]
+current = true
+fov = 70.0
+near = 0.03
+
+[node name="KeyLight" type="OmniLight3D" parent="VisualRoot/Viewport/World"]
+position = Vector3(-0.18, 0.2, -0.05)
+light_color = Color(0.58, 0.66, 1, 1)
+light_energy = 5.0
+omni_range = 3.0
+
+[node name="ModelRoot" type="Node3D" parent="VisualRoot/Viewport/World"]
+position = Vector3(0, -1.1376, -1.7)
+rotation = Vector3(0, 3.1415927, 0)
+scale = Vector3(0.72, 0.72, 0.72)
+
+[node name="Model" parent="VisualRoot/Viewport/World/ModelRoot" instance=ExtResource("2_model")]
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+"": SubResource("AnimationLibrary_caught")
+}
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_sting")
+volume_db = -2.0

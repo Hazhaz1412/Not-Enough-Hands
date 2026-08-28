@@ -9,11 +9,17 @@
 [ext_resource type="Script" path="res://ui/death_screen.gd" id="7_death_screen"]
 [ext_resource type="Script" path="res://ui/death_visage.gd" id="8_death_visage"]
 [ext_resource type="Script" path="res://ui/stamina_bar.gd" id="9_stamina_bar"]
-[ext_resource type="PackedScene" path="res://minigames/fusebox_minigame.tscn" id="10_fusebox_minigame"]
+[ext_resource type="Script" path="res://player/player_equipment.gd" id="10_player_equipment"]
+[ext_resource type="Script" path="res://ui/equipment_ui.gd" id="11_equipment_ui"]
+[ext_resource type="Script" path="res://ui/equipment_slot.gd" id="12_equipment_slot"]
+[ext_resource type="Script" path="res://player/player_bladder.gd" id="13_player_bladder"]
+[ext_resource type="Script" path="res://ui/bladder_bar.gd" id="15_bladder_bar"]
+[ext_resource type="PackedScene" path="res://minigames/fusebox_minigame.tscn" id="16_fusebox_minigame"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_horror_overlay"]
+resource_local_to_scene = true
 shader = ExtResource("2_horror_overlay")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_blink_overlay"]
@@ -69,6 +75,27 @@ corner_radius_top_left = 3
 corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_bladder_fill"]
+bg_color = Color(0.42, 0.58, 0.72, 0.95)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_equipment_slot"]
+bg_color = Color(0.012, 0.018, 0.025, 0.84)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.24, 0.36, 0.4, 0.72)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+shadow_color = Color(0, 0, 0, 0.68)
+shadow_size = 8
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_death_card"]
 content_margin_left = 46.0
@@ -161,6 +188,12 @@ script = ExtResource("1_script")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1709885884]
 shape = SubResource("CapsuleShape3D_player")
 
+[node name="Equipment" type="Node" parent="."]
+script = ExtResource("10_player_equipment")
+
+[node name="Bladder" type="Node" parent="."]
+script = ExtResource("13_player_bladder")
+
 [node name="CameraPivot" type="Node3D" parent="." unique_id=2142276564]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
 
@@ -243,13 +276,16 @@ autowrap_mode = 0
 layer = 104
 
 [node name="StaminaPanel" type="PanelContainer" parent="StatusUI"]
-anchors_preset = 6
+anchors_preset = 3
+anchor_left = 1.0
 anchor_top = 1.0
+anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 24.0
+offset_left = -280.0
 offset_top = -82.0
-offset_right = 280.0
+offset_right = -24.0
 offset_bottom = -24.0
+grow_horizontal = 0
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBox_stamina_panel")
 
@@ -278,6 +314,122 @@ value = 100.0
 show_percentage = false
 script = ExtResource("9_stamina_bar")
 player_path = NodePath("../../../../..")
+
+[node name="BladderPanel" type="PanelContainer" parent="StatusUI"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -280.0
+offset_top = -148.0
+offset_right = -24.0
+offset_bottom = -90.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBox_stamina_panel")
+
+[node name="Margin" type="MarginContainer" parent="StatusUI/BladderPanel"]
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="StatusUI/BladderPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Label" type="Label" parent="StatusUI/BladderPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.61, 0.75, 0.73, 0.9)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 12
+text = "BÀNG QUANG"
+
+[node name="BladderBar" type="ProgressBar" parent="StatusUI/BladderPanel/Margin/VBox"]
+custom_minimum_size = Vector2(228, 9)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBox_stamina_bg")
+theme_override_styles/fill = SubResource("StyleBox_bladder_fill")
+value = 0.0
+show_percentage = false
+script = ExtResource("15_bladder_bar")
+player_path = NodePath("../../../../..")
+
+[node name="EquipmentUI" type="CanvasLayer" parent="."]
+layer = 104
+
+[node name="SlotsRow" type="HBoxContainer" parent="EquipmentUI"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -148.0
+offset_right = 224.0
+offset_bottom = -24.0
+grow_vertical = 0
+theme_override_constants/separation = 12
+script = ExtResource("11_equipment_ui")
+player_path = NodePath("../..")
+
+[node name="Slot2" type="PanelContainer" parent="EquipmentUI/SlotsRow"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_vertical = 8
+theme_override_styles/panel = SubResource("StyleBox_equipment_slot")
+script = ExtResource("12_equipment_slot")
+slot_index = 1
+
+[node name="Content" type="VBoxContainer" parent="EquipmentUI/SlotsRow/Slot2"]
+layout_mode = 2
+alignment = 1
+
+[node name="NumberLabel" type="Label" parent="EquipmentUI/SlotsRow/Slot2/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.62, 0.64, 0.85)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 12
+text = "2"
+horizontal_alignment = 1
+
+[node name="ItemLabel" type="Label" parent="EquipmentUI/SlotsRow/Slot2/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.9, 0.92, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 22
+text = ""
+horizontal_alignment = 1
+
+[node name="Slot1" type="PanelContainer" parent="EquipmentUI/SlotsRow"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_vertical = 8
+theme_override_styles/panel = SubResource("StyleBox_equipment_slot")
+script = ExtResource("12_equipment_slot")
+slot_index = 0
+
+[node name="Content" type="VBoxContainer" parent="EquipmentUI/SlotsRow/Slot1"]
+layout_mode = 2
+alignment = 1
+
+[node name="NumberLabel" type="Label" parent="EquipmentUI/SlotsRow/Slot1/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.62, 0.64, 0.85)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 12
+text = "1"
+horizontal_alignment = 1
+
+[node name="ItemLabel" type="Label" parent="EquipmentUI/SlotsRow/Slot1/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.9, 0.92, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 22
+text = ""
+horizontal_alignment = 1
 
 [node name="BlinkUI" type="CanvasLayer" parent="."]
 layer = 105
@@ -331,7 +483,7 @@ color = Color(1, 1, 1, 1)
 
 [node name="DoorGhostMinigame" parent="." instance=ExtResource("6_door_minigame")]
 
-[node name="FuseboxMinigame" parent="." instance=ExtResource("10_fusebox_minigame")]
+[node name="FuseboxMinigame" parent="." instance=ExtResource("16_fusebox_minigame")]
 
 [node name="DeathUI" type="CanvasLayer" parent="."]
 visible = false

@@ -30,6 +30,8 @@ func _run() -> void:
 	if not house or not house.has_node("Generated"):
 		_fail("villa_main.tscn did not build the villa.")
 		return
+	if not _restrooms_are_furnished(house):
+		return
 
 	var entrance_ids: Array[int] = []
 	# Entrance 07 is the attic skylight, so it sits in the ceiling above the
@@ -61,7 +63,7 @@ func _run() -> void:
 		_fail("The player was not placed on SP_PLAYER_1.")
 		return
 
-	if not await _navigation_map_ready(spawn):
+	if not await _navigation_map_ready(main_scene, spawn):
 		_fail("The navigation map never came up around the player spawn.")
 		return
 
@@ -73,6 +75,8 @@ func _run() -> void:
 		return
 	if not _routes_are_usable(spawn):
 		return
+	if not _stairs_meet_their_floors():
+		return
 
 	print(
 		"Villa boot smoke test passed in %.1f s: 7 defense doors, %d navmesh polygons, "
@@ -82,14 +86,90 @@ func _run() -> void:
 	quit()
 
 
+func _restrooms_are_furnished(house: Node3D) -> bool:
+	var restroom_paths := [
+		"Generated/Level_F_00/Props/R_WC_GROUND_NORTHProps",
+		"Generated/Level_F_00/Props/R_WC_GROUND_SOUTHProps",
+		"Generated/Level_F_01/Props/R_WC_UP_NORTHProps",
+		"Generated/Level_F_01/Props/R_WC_UP_SOUTHProps",
+	]
+	for restroom_path: String in restroom_paths:
+		var props := house.get_node_or_null(restroom_path)
+		if not props:
+			_fail("Missing furnished restroom %s." % restroom_path)
+			return false
+		for fixture: String in ["Toilet", "Sink", "Mirror"]:
+			var expected_path := VillaHouse.FURNITURE_ROOT + fixture + ".fbx"
+			var count := 0
+			for node: Node in props.find_children("*", "Node3D", true, false):
+				if String(node.get_meta("source_asset", "")) == expected_path:
+					count += 1
+			if count != 1:
+				_fail("%s has %d %s fixture(s), expected exactly one."
+					% [restroom_path, count, fixture])
+				return false
+	var toilets := get_nodes_in_group("villa_toilets")
+	if toilets.size() != 5:
+		_fail("Villa has %d interactive toilets; expected four WCs plus the main bath."
+			% toilets.size())
+		return false
+	return true
+
+
+## The imported stair's railing is taller than its treads. This measures the
+## tread mesh itself so accidentally scaling from the full railing AABB cannot
+## leave the final step floating below its landing again.
+func _stairs_meet_their_floors() -> bool:
+	var visuals := get_nodes_in_group("smooth_stair_visual")
+	if visuals.size() != 7:
+		_fail("Expected 7 stair visuals, found %d." % visuals.size())
+		return false
+	for node: Node in visuals:
+		var visual := node as Node3D
+		var tread: MeshInstance3D
+		for child: Node in visual.find_children("*", "MeshInstance3D", true, false):
+			var candidate := child as MeshInstance3D
+			var candidate_bounds := candidate.mesh.get_aabb()
+			if absf(candidate_bounds.position.y) < 0.01 \
+					and absf(candidate_bounds.size.y - VillaHouse.KIT_STAIR_RISE) < 0.01:
+				tread = candidate
+				break
+		if not tread:
+			_fail("Stair %s has no measurable tread mesh." % visual.name)
+			return false
+
+		var bounds := tread.mesh.get_aabb()
+		var bottom := INF
+		var top := -INF
+		for x: int in 2:
+			for y: int in 2:
+				for z: int in 2:
+					var corner := bounds.position + bounds.size * Vector3(x, y, z)
+					var world_y := tread.to_global(corner).y
+					bottom = minf(bottom, world_y)
+					top = maxf(top, world_y)
+		var expected_bottom := float(visual.get_meta("stair_base_y"))
+		var expected_top := float(visual.get_meta("stair_top_y"))
+		if absf(bottom - expected_bottom) > 0.02 or absf(top - expected_top) > 0.02:
+			_fail(
+				"Stair %s spans y %.2f..%.2f, expected %.2f..%.2f."
+				% [visual.name, bottom, top, expected_bottom, expected_top]
+			)
+			return false
+	return true
+
+
 ## Baking a navmesh is synchronous, but the server only folds the new region
 ## into the map on one of its own sync steps. How many physics frames that
 ## takes is not fixed, so wait for the map to answer instead of counting
 ## frames and hoping - that guess made this test fail about one run in three.
-func _navigation_map_ready(spawn: Vector3) -> bool:
+func _navigation_map_ready(main_scene: Node, spawn: Vector3) -> bool:
 	var map := root.get_world_3d().navigation_map
-	for _attempt: int in 120:
-		if NavigationServer3D.map_get_closest_point(map, spawn).distance_to(spawn) < 2.0:
+	for _attempt: int in 240:
+		# Both halves matter. The region answers "where is the nearest floor"
+		# a sync step or two before the stair links exist, and a route asked
+		# for in that window walks around every staircase in the villa.
+		if bool(main_scene.get("navigation_is_ready")) 				and NavigationServer3D.map_get_closest_point(map, spawn).distance_to(spawn) < 2.0:
 			return true
 		await physics_frame
 	return false

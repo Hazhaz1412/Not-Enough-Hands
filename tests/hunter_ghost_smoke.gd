@@ -1,10 +1,11 @@
 extends SceneTree
 
-## Covers the five things that define the huntsman and would silently rot:
-## it only gets in through a breached door, it follows the trail a player leaves
-## on the floor rather than sight or sound, its lantern locks on and its grab
-## kills, sealing the last breach traps it inside, and an open breach lets it
-## walk back out.
+## Covers the things that define the huntsman and would silently rot: it only
+## gets in through a breached door, it follows the trail a player leaves on the
+## floor, it hears a player who is upright but not one who is crouched, it locks
+## on the instant it sees you and its grab kills, losing you makes it walk away
+## rather than straight back onto you, sealing the last breach traps it inside -
+## and once it is in, it never leaves.
 
 const FLOOR_Y := 0.0
 const DOOR_Z := 6.0
@@ -15,7 +16,8 @@ const HunterState_DORMANT := 0
 const HunterState_ENTERING := 1
 const HunterState_TRACKING := 2
 const HunterState_LOCKED := 5
-const HunterState_LEAVING := 8
+const HunterState_ROARING := 8
+const HunterState_DISENGAGING := 9
 
 var hunter_scene: PackedScene
 var door_scene: PackedScene
@@ -38,23 +40,24 @@ func _run() -> void:
 		return
 	if not await _test_unreachable_mark_does_not_freeze_it():
 		return
-	if not await _test_lantern_lock_and_seize():
+	if not await _test_sight_lock_and_seize():
 		return
 	if not await _test_chase_override_and_five_second_memory():
-		return
-	if not await _test_trap_limit_timeout_and_rescue():
 		return
 	if not await _test_minigame_safety_blocks_the_grab():
 		return
 	if not await _test_sealing_the_last_breach_traps_it():
 		return
-	if not await _test_leaves_through_a_breach():
+	if not await _test_it_never_leaves():
+		return
+	if not await _test_hearing_range_scales_with_loudness():
 		return
 
 	print(
 		'Hunter ghost smoke test passed: breach entry, sealed-out, trail following, '
-		+ 'unreachable-mark recovery, lantern lock and seize, chase override, '
-		+ 'five-second sight memory, traps, attack safety, sealed-in, breach exit.'
+		+ 'unreachable-mark recovery, sight lock and seize, chase override, '
+		+ 'five-second sight memory, fair-play disengage, attack safety, sealed-in, '
+		+ 'never leaves, hearing.'
 	)
 	quit()
 
@@ -113,9 +116,6 @@ func _spawn_hunter(at: Vector3, overrides: Dictionary = {}) -> CharacterBody3D:
 	var hunter := hunter_scene.instantiate() as CharacterBody3D
 	hunter.set('entry_delay_min', 0.4)
 	hunter.set('entry_delay_max', 0.4)
-	# Trap behavior has its own case below. Keep legacy behavior tests isolated so
-	# a trap dropped under their stationary fixture cannot change their premise.
-	hunter.set('trap_initial_delay', 999.0)
 	for key: String in overrides:
 		hunter.set(key, overrides[key])
 	root.add_child(hunter)
@@ -237,15 +237,14 @@ func _test_sealing_before_arrival_keeps_it_out() -> bool:
 ## the marks a player left walking across the floor, and it has to follow them.
 func _test_follows_the_trail() -> bool:
 	var markers := _add_sweep_markers()
-	# Lantern detection off, so nothing here can be explained by it seeing them.
+	# Sight off, so nothing here can be explained by it seeing them.
 	var hunter := await _spawn_hunter(
 		Vector3(0.0, 0.15, 0.0),
 		{
 			'entry_enabled': false,
-			'lantern_range': 0.0,
-			'certain_range': 0.0,
+			'sight_range': 0.0,
 			'cast_duration': 0.2,
-			'running_hearing_range': 0.0,
+			'hearing_range': 0.0,
 		}
 	)
 	var player := _spawn_player(Vector3(1.5, 0.9, 0.0))
@@ -298,8 +297,7 @@ func _test_unreachable_mark_does_not_freeze_it() -> bool:
 		Vector3(0.0, 0.15, 0.0),
 		{
 			'entry_enabled': false,
-			'lantern_range': 0.0,
-			'certain_range': 0.0,
+			'sight_range': 0.0,
 			# This isolated test deliberately makes the impossible airborne mark
 			# readable. Normal gameplay keeps the close nose to the current floor.
 			'nose_height_range': 5.0,
@@ -338,26 +336,44 @@ func _test_unreachable_mark_does_not_freeze_it() -> bool:
 	return true
 
 
-## Lantern into a lock, lock into a charge, charge into a grab that kills.
-func _test_lantern_lock_and_seize() -> bool:
+## Sight into a roar, roar into a charge, charge into a grab that kills. The
+## roar is the whole warning the player gets, so "it stood still and screamed
+## before it moved" is a contract and not a flourish.
+func _test_sight_lock_and_seize() -> bool:
 	var markers := _add_sweep_markers()
 	var hunter := await _spawn_hunter(
 		Vector3(0.0, 0.15, 0.0),
-		{'entry_enabled': false, 'seize_windup': 0.2, 'spot_time_far': 0.3}
+		{'entry_enabled': false, 'seize_windup': 0.2}
 	)
-	var player := _spawn_player(Vector3(0.0, 0.9, -4.0))
+	# Standing behind it: it is covered in eyes, so facing has nothing to do
+	# with whether it sees you.
+	var player := _spawn_player(Vector3(0.0, 0.9, 4.0))
 	await physics_frame
 
 	hunter.call('dev_force_spawn', null)
-	# Facing -Z, which is where the player is standing.
 	hunter.rotation.y = 0.0
 
 	var locked := [false]
 	hunter.locked_on.connect(func(_target: Node3D) -> void: locked[0] = true)
-	await create_timer(4.0).timeout
-
+	await physics_frame
+	await physics_frame
 	if not locked[0]:
-		return _fail('Huntsman never locked on to a player standing in its lantern.', hunter)
+		return _fail('Huntsman did not see a player standing behind it in the open.', hunter)
+	if int(hunter.get('state')) != HunterState_ROARING:
+		return _fail('Huntsman started moving without roaring first.', hunter)
+	if Vector2(hunter.velocity.x, hunter.velocity.z).length() > 0.5:
+		return _fail('Huntsman moved during its roar; the warning has to be a full stop.', hunter)
+
+	# Held for the full roar: the warning is the head start, so a roar that ends
+	# early is the difference between escapable and not.
+	await create_timer(2.0).timeout
+	if int(hunter.get('state')) != HunterState_ROARING:
+		return _fail('Huntsman cut its roar short and started moving early.', hunter)
+	await create_timer(0.9).timeout
+	if int(hunter.get('state')) != HunterState_LOCKED:
+		return _fail('Huntsman never came out of its roar into the charge.', hunter)
+
+	await create_timer(3.0).timeout
 	if player.get('is_alive'):
 		return _fail('Huntsman charged a locked player without ever seizing them.', hunter)
 
@@ -379,7 +395,6 @@ func _test_chase_override_and_five_second_memory() -> bool:
 			'charge_speed': 0.0,
 			'seize_range': 0.0,
 			'lose_sight_time': 5.0,
-			'trap_initial_delay': 999.0,
 		}
 	)
 	var player := _spawn_player(Vector3(0.0, 0.9, -6.0))
@@ -400,70 +415,37 @@ func _test_chase_override_and_five_second_memory() -> bool:
 	if int(hunter.get('state')) == HunterState_LOCKED or hunter.get('current_target') != null:
 		return _fail('Huntsman kept chasing after five uninterrupted seconds without sight.', hunter)
 
-	var boosted_speed := float(hunter.call('_non_chase_speed', 10.0))
-	if not is_equal_approx(boosted_speed, 13.0):
-		return _fail('Non-chase movement is not exactly 30 percent faster (%.2f).' % boosted_speed, hunter)
+	# Fair play: having genuinely lost them it turns around and walks away from
+	# where they went, rather than reading the very fresh trail it is standing on
+	# and coming straight back. The trail clock is reset to the moment it gave up
+	# for the same reason.
+	if int(hunter.get('state')) != HunterState_DISENGAGING:
+		return _fail('Huntsman did not disengage after losing its target.', hunter)
+	var seen_at: Vector3 = hunter.get('last_seen_position')
+	var away_from_prey: Vector3 = hunter.get('_disengage_point') - seen_at
+	var hunter_from_prey := hunter.global_position - seen_at
+	away_from_prey.y = 0.0
+	hunter_from_prey.y = 0.0
+	if away_from_prey.length() <= hunter_from_prey.length():
+		return _fail('Huntsman "walked away" to somewhere no further from its prey.', hunter)
+
+	var before := hunter.global_position
+	await create_timer(2.0).timeout
+	if hunter.global_position.distance_to(seen_at) <= before.distance_to(seen_at):
+		return _fail('Huntsman is disengaging but is not actually getting further away.', hunter)
+	if hunter.get('_has_last_seen_lead'):
+		return _fail('Huntsman is still holding the corner it lost them at.', hunter)
+
+	# Nothing it does short of a charge is faster than its patrol pace, and that
+	# pace is slower than a walking player: while it has not seen you, it is
+	# beatable on foot.
+	var patrol_speed := float(hunter.call('_non_chase_speed', float(hunter.get('walk_speed'))))
+	if not is_equal_approx(patrol_speed, 2.0):
+		return _fail('Patrol pace is not 2 m/s (%.2f).' % patrol_speed, hunter)
 
 	await _despawn(blocker)
 	await _despawn(hunter)
 	await _despawn(player)
-	await _despawn_all(markers)
-	return true
-
-
-## Hunter can own at most three live traps. A sprung trap releases by itself
-## after its configured eight-second default, or a different player can reduce
-## that wait to the two-second rescue channel.
-func _test_trap_limit_timeout_and_rescue() -> bool:
-	var markers := _add_sweep_markers()
-	var hunter := await _spawn_hunter(
-		Vector3(0.0, 0.15, 0.0),
-		{'entry_enabled': false, 'trap_initial_delay': 999.0}
-	)
-	hunter.call('dev_force_spawn', null)
-	for point: Vector3 in [
-		Vector3(-6.0, 0.0, 5.0),
-		Vector3(-2.0, 0.0, 5.0),
-		Vector3(2.0, 0.0, 5.0),
-	]:
-		if not bool(hunter.call('dev_place_trap', point)):
-			return _fail('Huntsman failed to place one of its first three traps.', hunter)
-	if bool(hunter.call('dev_place_trap', Vector3(6.0, 0.0, 5.0))) \
-		or int(hunter.call('get_active_trap_count')) != 3:
-		return _fail('Huntsman exceeded the three-trap house limit.', hunter)
-
-	var trap_scene := load('res://ghosts/hunter_trap.tscn') as PackedScene
-	var timed_trap := trap_scene.instantiate() as Node3D
-	root.add_child(timed_trap)
-	if not is_equal_approx(float(timed_trap.get('trap_duration')), 8.0) \
-		or not is_equal_approx(float(timed_trap.get('rescue_duration')), 2.0):
-		return _fail('Trap defaults are not eight seconds caught and two seconds rescued.', hunter)
-	timed_trap.set('trap_duration', 0.35)
-	var victim := _spawn_player(Vector3(8.0, 0.9, 0.0))
-	timed_trap.global_position = Vector3(8.0, 0.0, 0.0)
-	timed_trap.call('_on_body_entered', victim)
-	if not bool(victim.call('is_trapped_by_hunter')):
-		return _fail('Stepping on a Hunter trap did not immobilize the player.', hunter)
-	await create_timer(0.5).timeout
-	if bool(victim.call('is_trapped_by_hunter')):
-		return _fail('A trap did not release its player when its catch timer expired.', hunter)
-
-	var rescue_trap := trap_scene.instantiate() as Node3D
-	rescue_trap.set('trap_duration', 2.0)
-	rescue_trap.set('rescue_duration', 0.25)
-	root.add_child(rescue_trap)
-	rescue_trap.global_position = Vector3(12.0, 0.0, 0.0)
-	victim.global_position = Vector3(12.0, 0.9, 0.0)
-	var rescuer := _spawn_player(Vector3(13.0, 0.9, 0.0))
-	rescue_trap.call('_on_body_entered', victim)
-	rescue_trap.call('interact', rescuer)
-	await create_timer(0.4).timeout
-	if bool(victim.call('is_trapped_by_hunter')):
-		return _fail('A second player completed rescue but the victim stayed trapped.', hunter)
-
-	await _despawn(hunter)
-	await _despawn(victim)
-	await _despawn(rescuer)
 	await _despawn_all(markers)
 	return true
 
@@ -474,7 +456,7 @@ func _test_minigame_safety_blocks_the_grab() -> bool:
 	var markers := _add_sweep_markers()
 	var hunter := await _spawn_hunter(
 		Vector3(0.0, 0.15, 0.0),
-		{'entry_enabled': false, 'seize_windup': 0.2, 'spot_time_far': 0.3}
+		{'entry_enabled': false, 'seize_windup': 0.2}
 	)
 	var player := _spawn_player(Vector3(0.0, 0.9, -2.5))
 	await physics_frame
@@ -493,8 +475,8 @@ func _test_minigame_safety_blocks_the_grab() -> bool:
 	return true
 
 
-## The trap the whole creature is built around: repair every breach while it is
-## inside and it has nowhere to go.
+## The bargain the whole creature is built around: repair every breach while it
+## is inside and it has nowhere left to go - which no longer means it wanted to.
 func _test_sealing_the_last_breach_traps_it() -> bool:
 	var markers := _add_sweep_markers()
 	var door := _add_door()
@@ -516,22 +498,16 @@ func _test_sealing_the_last_breach_traps_it() -> bool:
 	if not hunter.get('trapped'):
 		return _fail('Huntsman is sealed in but does not know it.', hunter)
 
-	hunter.call('force_leave')
-	await create_timer(1.0).timeout
-	if int(hunter.get('state')) == HunterState_LEAVING:
-		return _fail('A sealed-in huntsman is still trying to walk out of the house.', hunter)
-	if not hunter.get('inside_house'):
-		return _fail('A sealed-in huntsman left the house anyway.', hunter)
-
 	await _despawn(hunter)
 	await _despawn(door)
 	await _despawn_all(markers)
 	return true
 
 
-## With a hole still open it does leave, and leaving takes it out of the world
-## entirely rather than parking it in a corner.
-func _test_leaves_through_a_breach() -> bool:
+## It never leaves. There is no hunt timer to run out and no walking back out
+## through the hole it came in by, so a wide-open breach and a long quiet stretch
+## still finds it inside.
+func _test_it_never_leaves() -> bool:
 	var markers := _add_sweep_markers()
 	var door := _add_door()
 	var hunter := await _spawn_hunter(Vector3(0.0, 0.15, 20.0))
@@ -539,31 +515,54 @@ func _test_leaves_through_a_breach() -> bool:
 	door.call('take_damage', 999.0, true)
 	await create_timer(4.0).timeout
 	if not hunter.get('inside_house'):
-		return _fail('Huntsman never got inside, so it cannot walk back out.', hunter)
+		return _fail('Huntsman never got inside, so it cannot be shown to stay.', hunter)
 
-	var left := [false]
-	hunter.left_house.connect(func(_door: Node) -> void: left[0] = true)
-	hunter.call('force_leave')
+	# The breach it walked in through is still a hole and nothing is hunting it
+	# out. Twelve seconds of that used to be a full exit.
 	await create_timer(12.0).timeout
-
-	if not left[0]:
-		return _fail('Huntsman never finished leaving through the open breach.', hunter)
-	if hunter.get('inside_house') or hunter.get('manifested'):
-		return _fail('Huntsman reported leaving but is still in the world.', hunter)
-	if int(hunter.get('state')) != HunterState_DORMANT:
-		return _fail('Huntsman did not return to dormant after leaving.', hunter)
-
-	# The door it walked out of is still a hole, so once the quiet between visits
-	# is spent it comes back through it without needing another door to break.
-	hunter.set('reentry_cooldown_min', 0.2)
-	hunter.set('reentry_cooldown_max', 0.2)
-	hunter.set('_reentry_cooldown', 0.2)
-	await create_timer(4.0).timeout
+	if not hunter.get('inside_house'):
+		return _fail('Huntsman left the house; it is supposed to be in there until dawn.', hunter)
 	if not hunter.get('manifested'):
-		return _fail('A breach left standing never invited the huntsman back.', hunter)
+		return _fail('Huntsman is still flagged as inside but has left the world.', hunter)
+	if int(hunter.get('state')) == HunterState_DORMANT:
+		return _fail('Huntsman went dormant while inside the house.', hunter)
 
 	await _despawn(hunter)
 	await _despawn(door)
+	await _despawn_all(markers)
+	return true
+
+
+## Its ears. Louder carries further on the same curve as the crawler's, on a
+## smaller radius - and crouch-walking is under the floor at any distance, which
+## is the one movement it cannot hear.
+func _test_hearing_range_scales_with_loudness() -> bool:
+	var markers := _add_sweep_markers()
+	var hunter := await _spawn_hunter(Vector3(0.0, 0.15, 0.0), {'entry_enabled': false})
+	hunter.call('dev_force_spawn', null)
+	await physics_frame
+
+	var reach: float = hunter.get('hearing_range')
+	var cases := [
+		# [label, loudness, distance, should_hear]
+		['a crouched player right next to it', 0.09, 2.0, false],
+		['a player walking upright a room away', 0.43, reach * 0.35, true],
+		['a player walking upright across the house', 0.43, reach * 0.9, false],
+		['a sprinting player across the house', 1.0, reach * 0.9, true],
+	]
+	for entry: Array in cases:
+		hunter.set('_has_noise_lead', false)
+		hunter.call(
+			'report_noise', Vector3(float(entry[2]), 0.15, 0.0), float(entry[1]), null
+		)
+		var heard: bool = hunter.get('_has_noise_lead')
+		if heard != bool(entry[3]):
+			return _fail(
+				'It %s %s.' % ['heard' if heard else 'did not hear', entry[0]],
+				hunter
+			)
+
+	await _despawn(hunter)
 	await _despawn_all(markers)
 	return true
 

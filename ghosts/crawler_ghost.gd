@@ -65,6 +65,12 @@ signal containment_recovered(escaped_position: Vector3, recovered_position: Vect
 @export var hunting_speed: float = 3.6
 @export var acceleration: float = 26.0
 @export var turn_speed: float = 7.5
+## How fast the steering direction itself may swing, as distinct from how fast
+## the body turns to face it. `acceleration` reaches full speed in about a
+## twentieth of a second, so a steering vector that jumps between frames - and
+## both the navigation path and the wedge probes below hand over vectors that
+## jump - gets applied as a twitch. Easing the direction turns those into arcs.
+@export var steer_smoothing: float = 6.0
 
 @export_category('Hunt Cycle')
 ## Whether it runs the hidden/omen/patrol/retreat cycle at all. Off leaves a
@@ -135,6 +141,22 @@ signal containment_recovered(escaped_position: Vector3, recovered_position: Vect
 ## out of a ceiling corner reliably, but falling out of one always works, and a
 ## crawler losing its grip is in character.
 @export var stuck_release_time: float = 1.4
+## How long it may make no headway toward its goal before it stops shoving and
+## tries sliding out sideways instead. Well under `stuck_release_time`, because
+## a sidestep costs nothing while letting go of the ceiling costs the whole
+## position - the cheap escape has to be the one that is tried first.
+@export var wedge_probe_time: float = 0.45
+## How long one sidestep is committed to. Long enough to actually clear a door
+## reveal or the end of a run of furniture, short enough that it is back on the
+## noise rather than wandering.
+@export var wedge_escape_time: float = 0.8
+## Reach of the feelers that choose which way to sidestep, and the width it
+## treats as "open".
+@export var wedge_probe_distance: float = 1.6
+## How far it has to physically get from where it was before it counts as having
+## gone anywhere. Roughly two body lengths: far enough that jittering in a
+## corner cannot pass for travel, short enough that squeezing along a wall does.
+@export var wedge_progress_distance: float = 0.75
 @export_flags_3d_physics var surface_mask: int = 1
 
 @export_category('Containment')
@@ -297,13 +319,19 @@ var pounce_air_time: float = 0.0
 var dev_attack_suspended: bool = false
 var attack_resume_grace_remaining: float = 0.0
 var recovery_timer: float = 0.0
-var stuck_timer: float = 0.0
 var regrip_cooldown_timer: float = 0.0
 var steering_goal: Vector3
-var best_goal_distance: float = INF
 var no_progress_time: float = 0.0
+## Where it was when it was last credited with having got somewhere, and how
+## long ago that was. Together these are the whole wedge detector.
+var wedge_anchor: Vector3
+## Whether it is currently trying to travel at all. A crawler holding still at a
+## search point to listen is not stuck, and must not be treated as if it were.
+var steering_active: bool = false
 var failed_releases: int = 0
-var last_position: Vector3
+var steer_direction: Vector3 = Vector3.ZERO
+var wedge_escape_direction: Vector3 = Vector3.ZERO
+var wedge_escape_timer: float = 0.0
 var last_contained_position: Vector3
 var has_contained_position: bool = false
 
@@ -379,7 +407,7 @@ func _ready() -> void:
 	add_to_group('hostile_ghosts')
 	normal_collision_layer = collision_layer
 	normal_collision_mask = collision_mask
-	last_position = global_position
+	wedge_anchor = global_position
 	last_contained_position = global_position
 	has_contained_position = _is_inside_containment(global_position)
 	last_noise_position = global_position
@@ -442,6 +470,7 @@ func _physics_process(delta: float) -> void:
 		has_contained_position = true
 
 	regrip_cooldown_timer = maxf(regrip_cooldown_timer - delta, 0.0)
+	wedge_escape_timer = maxf(wedge_escape_timer - delta, 0.0)
 	_refresh_cling_exclusions()
 	_listen(delta)
 	_update_surface(delta)
@@ -520,12 +549,13 @@ func dev_force_spawn(target: CharacterBody3D = null) -> bool:
 
 	spawn_position = _clamp_to_containment(spawn_position, containment_recovery_inset)
 	global_position = spawn_position
-	last_position = spawn_position
 	last_contained_position = spawn_position
 	has_contained_position = true
 	velocity = Vector3.ZERO
 	surface_normal = Vector3.UP
 	has_surface = false
+	steer_direction = Vector3.ZERO
+	wedge_escape_timer = 0.0
 	has_noise_fix = false
 	noise_confidence = 0.0
 	noise_source = null
@@ -584,7 +614,6 @@ func _recover_inside_containment() -> bool:
 	var interrupted_pounce := state == CrawlerState.POUNCE_WINDUP \
 		or state == CrawlerState.POUNCING
 	global_position = recovery_position
-	last_position = recovery_position
 	last_contained_position = recovery_position
 	has_contained_position = true
 	velocity = Vector3.ZERO
@@ -593,9 +622,8 @@ func _recover_inside_containment() -> bool:
 	has_surface = false
 	airborne_time = cling_lost_time
 	regrip_cooldown_timer = regrip_cooldown
-	stuck_timer = 0.0
 	no_progress_time = 0.0
-	best_goal_distance = INF
+	wedge_anchor = recovery_position
 	failed_releases = 0
 	pounce_timer = 0.0
 	pounce_air_time = 0.0
@@ -606,6 +634,8 @@ func _recover_inside_containment() -> bool:
 	last_noise_position = recovery_position
 	search_point = recovery_position
 	steering_goal = recovery_position
+	steer_direction = Vector3.ZERO
+	wedge_escape_timer = 0.0
 	if state != CrawlerState.HIDDEN and state != CrawlerState.DORMANT:
 		_set_state(CrawlerState.PATROL if not patrol_points.is_empty() else CrawlerState.SEARCHING)
 	if interrupted_pounce:
@@ -769,10 +799,7 @@ func _update_surface(delta: float) -> void:
 		# Mid-leap it is a normal falling body, so its local up has to unwind
 		# back to world up - otherwise a leap launched off a ceiling keeps
 		# probing upward and mistakes the ceiling it just left for a landing.
-		surface_normal = surface_normal.normalized().slerp(
-			Vector3.UP,
-			minf(surface_align_speed * delta, 1.0)
-		).normalized()
+		surface_normal = _ease_normal(surface_normal, Vector3.UP, surface_align_speed * delta)
 		return
 
 	var forward := facing_direction
@@ -790,10 +817,11 @@ func _update_surface(delta: float) -> void:
 			# so it can never find the floor it is about to land on. Rolling the
 			# local up back toward world up while airborne is what lets a
 			# dropped or missed-pounce crawler re-grip on impact.
-			surface_normal = surface_normal.normalized().slerp(
+			surface_normal = _ease_normal(
+				surface_normal,
 				Vector3.UP,
-				minf(surface_align_speed * 0.5 * delta, 1.0)
-			).normalized()
+				surface_align_speed * 0.5 * delta
+			)
 		return
 
 	airborne_time = 0.0
@@ -866,7 +894,29 @@ func _align_surface(new_normal: Vector3, delta: float) -> void:
 		# in the next room that it has just left the floor for the wall.
 		_play_bone_snap()
 		surface_changed.emit(target)
-	surface_normal = current.slerp(target, minf(surface_align_speed * delta, 1.0)).normalized()
+	surface_normal = _ease_normal(current, target, surface_align_speed * delta)
+
+
+## Eases one surface normal toward another, avoiding the numerical trap in
+## slerping two vectors that are already all but identical.
+##
+## Vector3.slerp rotates about the cross product of its two arguments, and for a
+## converged alignment - which is most frames, since the crawler holds one
+## surface for seconds at a time - that cross product is entirely floating point
+## noise. Godot rejects the non-unit axis it normalizes to and hands back a zero
+## vector, which lands in `surface_normal`: one frame with no adhesion and no
+## usable local up, and a spurious re-grip, bone snap and `surface_changed` on
+## the frame after, because a zero normal is a long way from every real one.
+##
+## There is nothing left to interpolate that close in, so it snaps instead.
+func _ease_normal(current: Vector3, target: Vector3, weight: float) -> Vector3:
+	var to := target.normalized()
+	if to.is_zero_approx():
+		return current
+	var from := current.normalized()
+	if from.is_zero_approx() or from.dot(to) > 0.9999:
+		return to
+	return from.slerp(to, clampf(weight, 0.0, 1.0)).normalized()
 
 
 func _apply_adhesion(delta: float) -> void:
@@ -974,7 +1024,6 @@ func _enter_hidden(delay: float) -> void:
 	noise_source = null
 	pounce_cooldown_timer = 0.0
 	global_position = lair_position
-	last_position = lair_position
 	surface_normal = Vector3.UP
 	has_surface = false
 	_set_manifested(false)
@@ -1023,7 +1072,6 @@ func _begin_omen() -> void:
 
 	global_position = crossing['from']
 	omen_target_point = crossing['to']
-	last_position = global_position
 	surface_normal = Vector3.UP
 	has_surface = false
 	omen_timer = omen_max_duration
@@ -1179,8 +1227,14 @@ func _update_patrol(delta: float) -> void:
 		_drop_to_floor()
 		return
 
+	# Aimed above the marker both while it is starting the climb from flat floor
+	# and while it is already up a wall or across a ceiling. Dropping the bias
+	# the moment it left the floor was the other half of why it never crossed a
+	# ceiling: the raw line to a marker standing on the floor points straight
+	# back down, so it would climb a wall and immediately pour off it again.
 	var flat := surface_normal.dot(Vector3.UP) > flat_floor_threshold
-	var climb := _effective_climb_bias() if (level and flat) else 0.0
+	var clinging := has_surface and surface_normal.dot(Vector3.UP) <= ground_surface_threshold
+	var climb := _effective_climb_bias(target) if (level and (flat or clinging)) else 0.0
 	_crawl_toward(delta, target, crawl_speed, climb)
 
 
@@ -1191,20 +1245,29 @@ func _update_patrol(delta: float) -> void:
 ## and its ceiling until the route timeout fired. Aiming just below the real
 ## ceiling gets the same behaviour - up the wall, across the ceiling - in rooms
 ## that have the room for it, and no behaviour at all in the ones that do not.
-func _effective_climb_bias() -> float:
+func _effective_climb_bias(target: Vector3) -> float:
 	if patrol_climb_bias <= 0.0:
 		return 0.0
+	# Probed from wherever the climb is actually being started. On the floor that
+	# is the crawler itself, and clipping to its own headroom is what stops it
+	# steering up into the void under the second storey. Once it is on a wall or
+	# a ceiling its own headroom is the slab it is holding onto, so measuring
+	# there would retract the bias at exactly the moment the bias is producing
+	# the behaviour it exists for; what matters then is how much open air stands
+	# over the marker it is crossing toward.
+	var on_floor := surface_normal.dot(Vector3.UP) > flat_floor_threshold
+	var origin := global_position if on_floor else target + Vector3.UP * 0.1
 	var probe := patrol_climb_bias + 0.5
 	var query := PhysicsRayQueryParameters3D.create(
-		global_position,
-		global_position + Vector3.UP * probe,
+		origin,
+		origin + Vector3.UP * probe,
 		surface_mask,
 		_cling_exclusions
 	)
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return patrol_climb_bias
-	var headroom := global_position.distance_to(hit['position'])
+	var headroom := origin.distance_to(hit['position'])
 	return maxf(headroom - 0.7, 0.0)
 
 
@@ -1303,11 +1366,7 @@ func _update_searching(delta: float) -> void:
 	search_point_timer -= delta
 	if search_point_timer <= 0.0:
 		search_point_timer = search_point_interval
-		var angle := randf() * TAU
-		var radius := randf_range(search_radius * 0.35, search_radius)
-		search_point = _clamp_to_containment(
-			last_noise_position + Vector3(cos(angle), 0.0, sin(angle)) * radius
-		)
+		search_point = _pick_search_point()
 		if not chitter_audio.playing and randf() < 0.4:
 			chitter_audio.play()
 
@@ -1315,6 +1374,57 @@ func _update_searching(delta: float) -> void:
 		_brake(delta)
 		return
 	_crawl_toward(delta, search_point, crawl_speed)
+
+
+## Picks somewhere worth sweeping to rather than anywhere at all.
+##
+## This used to be one random point on a flat disc around the noise, clamped to
+## the containment box and nothing else, so it regularly landed inside a wall or
+## in the next room - and a point inside a wall is one the crawler grinds at for
+## the full `search_point_interval` before it is handed another. Two cheap
+## filters remove nearly all of those.
+func _pick_search_point() -> Vector3:
+	for _attempt: int in 6:
+		var angle := randf() * TAU
+		var radius := randf_range(search_radius * 0.35, search_radius)
+		var candidate := _clamp_to_containment(
+			last_noise_position + Vector3(cos(angle), 0.0, sin(angle)) * radius
+		)
+		var settled := _settle_search_point(candidate)
+		if settled != Vector3.INF:
+			return settled
+	return _clamp_to_containment(last_noise_position)
+
+
+## Pulls a candidate back to the near side of anything between it and the noise,
+## then onto the navigation mesh where the level has one. Returns INF for a
+## candidate not worth keeping: one walled off almost immediately, or one whose
+## nearest walkable point is a whole search radius away, which means it was
+## never in this room to begin with.
+func _settle_search_point(candidate: Vector3) -> Vector3:
+	var origin := last_noise_position
+	var query := PhysicsRayQueryParameters3D.create(
+		origin,
+		candidate,
+		surface_mask,
+		_cling_exclusions
+	)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		var blocked: Vector3 = hit['position']
+		if origin.distance_to(blocked) < search_radius * 0.35:
+			return Vector3.INF
+		candidate = blocked + (origin - blocked).normalized() * 0.6
+
+	if not _has_navigation():
+		return candidate
+	var snapped := NavigationServer3D.map_get_closest_point(
+		nav_agent.get_navigation_map(),
+		candidate
+	)
+	if snapped.distance_to(candidate) > search_radius:
+		return Vector3.INF
+	return snapped
 
 
 func _update_pounce_windup(delta: float) -> void:
@@ -1475,10 +1585,8 @@ func _kill(player: CharacterBody3D) -> void:
 
 
 func _crawl_toward(delta: float, point: Vector3, speed: float, climb_bias: float = 0.0) -> void:
-	if point.distance_to(steering_goal) > 0.5:
-		steering_goal = point
-		best_goal_distance = INF
-		no_progress_time = 0.0
+	steering_goal = point
+	steering_active = true
 
 	var direction := _steering_direction(point, climb_bias)
 	if direction.is_zero_approx():
@@ -1493,7 +1601,7 @@ func _crawl_toward(delta: float, point: Vector3, speed: float, climb_bias: float
 		if tangent_direction.length_squared() < 0.0001:
 			_brake(delta)
 			return
-	tangent_direction = tangent_direction.normalized()
+	tangent_direction = _smooth_steering(tangent_direction.normalized(), delta)
 
 	var normal_speed := velocity.dot(surface_normal)
 	var tangent_velocity := velocity - surface_normal * normal_speed
@@ -1517,16 +1625,31 @@ func _crawl_toward(delta: float, point: Vector3, speed: float, climb_bias: float
 ## seconds later. Navigation is exactly what knows where the stairs are.
 ## Genuine wedging is handled by _release_grip instead.
 func _steering_direction(point: Vector3, climb_bias: float = 0.0) -> Vector3:
+	# A sidestep in progress outranks the goal for its commitment window: the
+	# only reason one was ever started is that steering at the goal had stopped
+	# getting anywhere.
+	if wedge_escape_timer > 0.0 and not wedge_escape_direction.is_zero_approx():
+		return wedge_escape_direction.normalized()
+
 	var direct := point - global_position
 	if direct.length_squared() < 0.0001:
 		return Vector3.ZERO
 
+	# A live climb bias means the caller has already cleared it to go up here and
+	# now - level floor, marker on this storey, real headroom over it - and going
+	# up is not something a floor plan has an opinion about.
+	#
+	# Consulting navigation at that moment threw the bias away entirely, because
+	# the bias is only ever added to the straight line. That is why a crawler in
+	# a house with a baked navmesh spent every patrol on the floor while the
+	# same crawler in a bare test box climbed exactly as designed: the behaviour
+	# was never broken, it was unreachable in the only place it mattered.
+	#
+	# The bias still must not be handed to the agent. Feeding it a point metres
+	# above the floor snaps the destination to whatever navmesh polygon happens
+	# to be nearest that empty air, which routes it somewhere else entirely.
 	var on_ground := surface_normal.dot(Vector3.UP) > ground_surface_threshold
-	if not on_ground or not _has_navigation():
-		# The climb bias only applies to the straight line. Feeding a point
-		# metres above the floor to the navigation agent makes it snap the
-		# destination to whatever navmesh polygon happens to be nearest that
-		# empty air, which routes it somewhere else entirely.
+	if not on_ground or climb_bias > 0.0 or not _has_navigation():
 		return (direct + Vector3.UP * climb_bias).normalized()
 
 	if nav_agent.target_position.distance_squared_to(point) > 0.04:
@@ -1538,6 +1661,46 @@ func _steering_direction(point: Vector3, climb_bias: float = 0.0) -> Vector3:
 	return direct.normalized()
 
 
+## Eases the steering direction instead of snapping to it, and keeps the result
+## on the surface. Interpolating two directions across a curved surface leaves
+## the result tilted into it, which reads as the body ducking at every corner,
+## so the eased vector is flattened back onto the tangent plane before use.
+func _smooth_steering(target: Vector3, delta: float) -> Vector3:
+	var previous := steer_direction - surface_normal * steer_direction.dot(surface_normal)
+	if steer_smoothing <= 0.0 or previous.length_squared() < 0.0001:
+		steer_direction = target
+		return target
+
+	var eased := previous.normalized().lerp(target, minf(steer_smoothing * delta, 1.0))
+	eased -= surface_normal * eased.dot(surface_normal)
+	# An exact reversal interpolates through zero, which would leave it facing
+	# nowhere for a frame. Turning on the spot is the honest answer there.
+	if eased.length_squared() < 0.0001:
+		eased = target
+	steer_direction = eased.normalized()
+	return steer_direction
+
+
+## How far the body could travel in `direction`, starting `offset` from where it
+## is now, before something stops it. The origin lifts clear of the plane it is
+## gripping so that plane is not itself the first thing every probe hits.
+func _surface_clearance(direction: Vector3, offset: Vector3 = Vector3.ZERO) -> float:
+	if direction.is_zero_approx():
+		return 0.0
+	var origin := global_position + offset + surface_normal * 0.12
+	var query := PhysicsRayQueryParameters3D.create(
+		origin,
+		origin + direction.normalized() * wedge_probe_distance,
+		surface_mask,
+		_cling_exclusions
+	)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return wedge_probe_distance
+	var blocked: Vector3 = hit['position']
+	return origin.distance_to(blocked)
+
+
 func _has_navigation() -> bool:
 	var map_rid := nav_agent.get_navigation_map()
 	return map_rid.is_valid() \
@@ -1546,51 +1709,116 @@ func _has_navigation() -> bool:
 
 
 func _brake(delta: float) -> void:
+	steering_active = false
 	var normal_speed := velocity.dot(surface_normal)
 	var tangent_velocity := velocity - surface_normal * normal_speed
 	tangent_velocity = tangent_velocity.move_toward(Vector3.ZERO, acceleration * delta * 2.0)
 	velocity = tangent_velocity + surface_normal * normal_speed
 
 
-## Wedged against something the navmesh thinks is passable. Dropping to direct
-## steering for a moment makes it climb the obstruction instead of grinding
-## along it, which is both the fix and exactly what this creature should do.
+## Wedged against something the navmesh thinks is passable, or against something
+## no navmesh has an opinion about because the crawler is up a wall.
+##
+## What counts as progress here is net displacement over a window - where it
+## physically is against where it physically was - and not, as it used to be,
+## how much nearer the goal it has got. The goal is the wrong yardstick twice
+## over:
+##
+##   - during a hunt the goal IS the player, so it moves several times a second,
+##     and the old code rebased the whole detector every time it did. A crawler
+##     wedged on the ceiling with a player walking about on the far side of a
+##     wall therefore never registered as stuck at any point, and shoved into
+##     the same corner for as long as the player kept moving. That is the exact
+##     failure this rewrite exists for.
+##   - a crawler skating back and forth in a corner is moving constantly and
+##     getting nowhere, which the frame-to-frame movement check also misses.
+##
+## Displacement from an anchor answers both, and needs no goal at all.
 func _update_stuck_state(delta: float) -> void:
-	var moved := global_position.distance_to(last_position)
-	last_position = global_position
 
-	var should_be_moving := state == CrawlerState.HUNTING \
-		or state == CrawlerState.SEARCHING \
-		or state == CrawlerState.PATROL
+	var should_be_moving := steering_active 		and (state == CrawlerState.HUNTING
+			or state == CrawlerState.SEARCHING
+			or state == CrawlerState.PATROL)
 	if not should_be_moving:
-		stuck_timer = 0.0
+		# Holding still on purpose - arrived, listening, braked - is not being
+		# stuck, and letting it accumulate here is what used to drop a crawler
+		# off the ceiling for the crime of waiting quietly.
+		wedge_anchor = global_position
 		no_progress_time = 0.0
-		best_goal_distance = INF
 		return
 
-	if moved < 0.004:
-		stuck_timer += delta
-		if stuck_timer >= stuck_release_time:
-			_release_grip()
-			return
-	else:
-		stuck_timer = maxf(stuck_timer - delta * 2.0, 0.0)
-
-	# Wedged does not always mean motionless. Skating back and forth in a corner
-	# passes the movement check above forever while getting no closer to
-	# anything, so progress toward the actual goal is what is measured here.
-	var goal_distance := global_position.distance_to(steering_goal)
-	if goal_distance < best_goal_distance - 0.15:
-		best_goal_distance = goal_distance
+	if global_position.distance_to(wedge_anchor) > wedge_progress_distance:
+		wedge_anchor = global_position
 		no_progress_time = 0.0
 		failed_releases = 0
 		return
 
 	no_progress_time += delta
+	if wedge_escape_timer <= 0.0 and no_progress_time >= wedge_probe_time:
+		_begin_wedge_escape()
+	if wedge_escape_timer > 0.0:
+		# A committed sidestep is a detour, and a detour by definition covers no
+		# ground toward anywhere. Feeding that back into the release timer would
+		# time out every escape a fraction of a second before it finished.
+		return
 	if no_progress_time >= stuck_release_time:
+		# Sideways did not work either, so it lets go. Off a ceiling or a wall
+		# this is the important one: it puts the creature back on the floor,
+		# where navigation applies and the way round the wall is a door rather
+		# than a straight line through it.
 		no_progress_time = 0.0
-		best_goal_distance = INF
+		wedge_anchor = global_position
 		_release_grip()
+
+
+## Feels along the surface for the open side and commits to it for a moment.
+##
+## Crawling into a wall is not a fault in this creature - it is how it gets onto
+## the wall - so nothing here fires until that has demonstrably stopped paying:
+## `wedge_probe_time` of getting no nearer the goal. What it fixes is the case
+## climbing cannot, the door reveal or the alcove where the face in front is
+## grippable and so are the two beside it, every re-grip picks a different one,
+## and the straight line to the goal points into all three. Sliding out sideways
+## is the only exit, and it is one direct steering can never find on its own.
+func _begin_wedge_escape() -> void:
+	var goal_direction := steering_goal - global_position
+	goal_direction -= surface_normal * goal_direction.dot(surface_normal)
+	if goal_direction.length_squared() < 0.0001:
+		goal_direction = facing_direction - surface_normal * facing_direction.dot(surface_normal)
+	if goal_direction.length_squared() < 0.0001:
+		return
+	goal_direction = goal_direction.normalized()
+
+	# Only ever an answer to something physically in the way. Stalling for any
+	# other reason - braked at a search point, held off by a pounce cooldown -
+	# must not send it wandering off sideways.
+	if _surface_clearance(goal_direction) > wedge_probe_distance * 0.6:
+		return
+
+	var side := surface_normal.cross(goal_direction)
+	if side.length_squared() < 0.0001:
+		return
+	side = side.normalized()
+
+	var min_room := wedge_probe_distance * 0.5
+	var left_room := _surface_clearance(side)
+	var right_room := _surface_clearance(-side)
+	if maxf(left_room, right_room) < min_room:
+		# Boxed in on both sides too. There is nothing to slide to, so leave it
+		# to the blunter drop below, which is what that exists for.
+		return
+
+	# Which side is open is the wrong question: standing in front of a flat
+	# panel both sides are equally open, and choosing on that alone is a coin
+	# flip that sends it along the length of the obstruction as often as around
+	# the end of it. The question is which side has the GOAL open once it gets
+	# there, so the forward probe is repeated from a step out to either hand.
+	var left_gain := _surface_clearance(goal_direction, side * left_room * 0.9) 		if left_room >= min_room else -1.0
+	var right_gain := _surface_clearance(goal_direction, -side * right_room * 0.9) 		if right_room >= min_room else -1.0
+	if maxf(left_gain, right_gain) <= 0.0:
+		return
+	wedge_escape_direction = side if left_gain >= right_gain else -side
+	wedge_escape_timer = wedge_escape_time
 
 
 ## Lets go on purpose. Used when it has wedged itself somewhere no amount of
@@ -1608,7 +1836,8 @@ func _release_grip() -> void:
 ## also used as ordinary navigation - dropping off a ceiling to take the stairs
 ## is not a failure and must not count toward relocating.
 func _drop_to_floor() -> void:
-	stuck_timer = 0.0
+	wedge_escape_timer = 0.0
+	steer_direction = Vector3.ZERO
 	has_surface = false
 	airborne_time = cling_lost_time
 	regrip_cooldown_timer = regrip_cooldown
@@ -1638,11 +1867,11 @@ func _relocate_after_wedging() -> void:
 
 	failed_releases = 0
 	no_progress_time = 0.0
-	best_goal_distance = INF
-	stuck_timer = 0.0
+	wedge_anchor = landing
+	steer_direction = Vector3.ZERO
+	wedge_escape_timer = 0.0
 	patrol_point_timer = patrol_point_timeout
 	global_position = landing
-	last_position = landing
 	velocity = Vector3.ZERO
 	surface_normal = Vector3.UP
 	has_surface = false

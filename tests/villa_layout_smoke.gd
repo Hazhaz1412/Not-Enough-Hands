@@ -36,6 +36,8 @@ func _run() -> void:
 		return
 	if not _check_room_connections(spec, levels):
 		return
+	if not _check_restrooms(spec, levels):
+		return
 	if not await _check_generated_scene(spec):
 		return
 
@@ -247,6 +249,40 @@ func _check_room_connections(spec: VillaSpec, levels: Dictionary) -> bool:
 		_fail("Room %s has only %d connection(s) and is not a declared exception."
 			% [room_id, connections[room_id]])
 		return false
+	return true
+
+
+## The four added WCs are intentionally small dead ends distributed over the
+## two occupied storeys. Their one-door topology is part of the requested map
+## design, rather than an accidental room trap.
+func _check_restrooms(spec: VillaSpec, levels: Dictionary) -> bool:
+	var expected := {
+		"R_WC_GROUND_NORTH": 0,
+		"R_WC_GROUND_SOUTH": 0,
+		"R_WC_UP_NORTH": 1,
+		"R_WC_UP_SOUTH": 1,
+	}
+	for room_id: String in expected:
+		var room := spec.room(room_id)
+		if room.is_empty():
+			_fail("Missing restroom %s." % room_id)
+			return false
+		if int(room["level"]) != int(expected[room_id]) or String(room.get("kind", "")) != "wc":
+			_fail("Restroom %s has the wrong level or room kind." % room_id)
+			return false
+		var rect := VillaSpec.to_rect(room["rect"])
+		if rect.size != Vector2i(2, 2):
+			_fail("Restroom %s must stay compact at 2x2 cells, got %s." % [room_id, rect.size])
+			return false
+		var doors: Array = room.get("doors", [])
+		if doors.size() != 1:
+			_fail("Restroom %s must be a one-door dead end." % room_id)
+			return false
+		var door_cell := VillaSpec.to_cell(doors[0])
+		var generated_doors: Array = levels[int(expected[room_id])]["doors"]
+		if not generated_doors.any(func(door: Dictionary) -> bool: return door["cell"] == door_cell):
+			_fail("Restroom %s door was not carved into the generated level." % room_id)
+			return false
 	return true
 
 

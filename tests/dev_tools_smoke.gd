@@ -34,6 +34,12 @@ func _run() -> void:
 	if not dev_tools.panel_open or not dev_tools.panel.visible:
 		_fail("F1 panel API did not show Dev Tools.")
 		return
+	if dev_tools.panel.get_combined_minimum_size().y > dev_tools.panel.size.y:
+		_fail("Dev Tools controls overflow the panel (minimum %.1f, panel %.1f)." % [
+			dev_tools.panel.get_combined_minimum_size().y,
+			dev_tools.panel.size.y,
+		])
+		return
 	dev_tools.set_invincibility_enabled(true)
 	if not bool(player.get("dev_invincible")) \
 		or bool(player.call("can_be_targeted_by_ghosts")):
@@ -49,6 +55,27 @@ func _run() -> void:
 		or not is_equal_approx(float(player.get("current_stamina")), float(player.get("max_stamina"))):
 		_fail("Fast movement did not enable or refill development stamina.")
 		return
+
+	# The bladder slider is both a setter and a live monitor: changing it must
+	# mutate the authoritative PlayerBladder through Player's public API, while
+	# later gameplay changes must immediately flow back into the control.
+	dev_tools.set_bladder_level(73.0)
+	if not is_equal_approx(player.get_bladder(), 73.0) \
+		or not is_equal_approx(dev_tools.bladder_slider.value, 73.0) \
+		or dev_tools.bladder_value.text != "73%":
+		_fail("Dev Tools bladder slider did not set and display 73%.")
+		return
+	player.reduce_bladder(13.0)
+	if not is_equal_approx(dev_tools.bladder_slider.value, 60.0) \
+		or dev_tools.bladder_value.text != "60%":
+		_fail("Dev Tools bladder slider did not follow a gameplay-side bladder change.")
+		return
+	dev_tools.set_bladder_level(1000.0)
+	if not is_equal_approx(player.get_bladder(), player.bladder.bladder_max) \
+		or not is_equal_approx(dev_tools.bladder_slider.value, player.bladder.bladder_max):
+		_fail("Dev Tools bladder slider bypassed the normal maximum clamp.")
+		return
+	dev_tools.set_bladder_level(0.0)
 
 	# Noclip has to switch off the capsule as well as gravity, or the player
 	# flies while still being shoved around by whatever they are inside of.
@@ -167,7 +194,7 @@ func _run() -> void:
 		audio.stop()
 	game.queue_free()
 	await process_frame
-	print("Dev Tools smoke test passed: invincibility, x3 speed, noclip flight, clear vision, seven-door x-ray, all three ghosts, and selected-door attack.")
+	print("Dev Tools smoke test passed: bladder slider, invincibility, x3 speed, noclip flight, clear vision, seven-door x-ray, all three ghosts, and selected-door attack.")
 	quit()
 
 

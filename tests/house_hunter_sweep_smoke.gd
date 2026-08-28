@@ -14,7 +14,7 @@ const REQUIRED_VISITS := 2
 ## close counts as found.
 const HUNT_SECONDS := 45.0
 const REACH_DISTANCE := 3.0
-## Third: how long a player may stand at the head of the stairs, in its lantern,
+## Third: how long a player may stand at the head of the stairs, in plain sight,
 ## with a bannister between them, and live.
 const RAIL_SECONDS := 12.0
 
@@ -52,8 +52,7 @@ func _run() -> void:
 	player.global_position = Vector3(0.0, 100.0, 0.0)
 	hunter.set('entry_enabled', false)
 	hunter.set('nose_range', 0.0)
-	hunter.set('lantern_range', 0.0)
-	hunter.set('certain_range', 0.0)
+	hunter.set('sight_range', 0.0)
 	hunter.set('cast_duration', 0.4)
 	# Faster than it walks in the game, purely so the test does not have to run
 	# for a minute to observe two rooms.
@@ -116,8 +115,7 @@ func _run() -> void:
 	# it must not work here - and "it never came" is the exact way this creature
 	# fails when its search or its pathing quietly breaks.
 	hunter.set('nose_range', 8.5)
-	hunter.set('lantern_range', 15.0)
-	hunter.set('certain_range', 3.0)
+	hunter.set('sight_range', 15.0)
 	# Player upstairs in the west bedroom, motionless; huntsman two floors below
 	# in the boiler room with its memory wiped. It has to search its way there.
 	player.global_position = Vector3(-4.0, 3.9, 3.0)
@@ -152,7 +150,7 @@ func _run() -> void:
 	# Third: the stairwell head, which is where it kept failing in play. The
 	# player stands on the second floor a couple of metres from a huntsman that
 	# has arrived at the top of the stairs with the bannister between them. It has
-	# them in the lantern the whole time, so standing there must be fatal - this
+	# them in plain sight the whole time, so standing there must be fatal - this
 	# is the case where it used to press against the rail, slide back and forth,
 	# and then quietly go back to sniffing.
 	player.global_position = Vector3(1.5, 3.9, 3.0)
@@ -169,7 +167,7 @@ func _run() -> void:
 
 	if bool(player.get('is_alive')):
 		_fail(
-			'A player standing at the head of the stairs survived %.0f s in the lantern: huntsman at %s, state %d, %.2f m away.' % [
+			'A player standing at the head of the stairs survived %.0f s in plain sight: huntsman at %s, state %d, %.2f m away.' % [
 				RAIL_SECONDS,
 				hunter.global_position,
 				int(hunter.get('state')),

@@ -13,6 +13,10 @@ enum Phase {
 const STATUE_STING = preload("res://assets/audio/statue_spotted_jumpscare.mp3")
 const CRAWLER_STING = preload("res://assets/audio/crawler_scream.ogg")
 const HUNTER_STING = preload("res://assets/audio/creature_reveal.mp3")
+## No dedicated toilet-ghost jumpscare sting exists yet (Sprint 10) - reusing
+## its own established appearance cue rather than leaving it silently
+## mislabeled as the statue (see _identify_killer()).
+const TOILET_STING = preload("res://assets/audio/statue_teleport.wav")
 
 @export_category("Timing")
 @export var impact_duration: float = 0.12
@@ -69,6 +73,9 @@ func show_jumpscare(ghost: Node3D) -> void:
 		&"hunter":
 			scare_audio.stream = HUNTER_STING
 			scare_audio.pitch_scale = 0.68
+		&"toilet":
+			scare_audio.stream = TOILET_STING
+			scare_audio.pitch_scale = 0.85
 		_:
 			scare_audio.stream = STATUE_STING
 			scare_audio.pitch_scale = 0.97
@@ -158,6 +165,8 @@ func _identify_killer(ghost: Node3D) -> StringName:
 		if ghost.is_in_group("hunter_ghosts") \
 			or "hunter" in ghost.name.to_lower():
 			return &"hunter"
+		if "toilet" in ghost.name.to_lower():
+			return &"toilet"
 	return &"statue"
 
 
@@ -169,6 +178,9 @@ func _configure_copy() -> void:
 		&"hunter":
 			cause_label.text = "THỢ SĂN ĐÃ TÓM ĐƯỢC BẠN"
 			tip_label.text = "Nó lần theo dấu chân bạn để lại. Đừng quay về lối cũ, và đừng bao giờ đứng yên trong vệt đèn của nó."
+		&"toilet":
+			cause_label.text = "CON MA NHÀ VỆ SINH ĐÃ BẮT ĐƯỢC BẠN"
+			tip_label.text = "Nó xuất hiện bất ngờ quanh bạn. Hãy quay lại nhìn thẳng vào nó trước khi hết thời gian."
 		_:
 			cause_label.text = "BẠN ĐÃ BỊ TƯỢNG ĐÁ BẮT"
 			tip_label.text = "Đừng quay lưng. Đừng nhắm mắt khi nó đang ở gần."

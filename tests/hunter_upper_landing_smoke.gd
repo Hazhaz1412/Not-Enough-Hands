@@ -64,7 +64,7 @@ func _run() -> void:
 	hunter.set("entry_enabled", false)
 	hunter.call("dev_force_spawn", null)
 	hunter.global_position = Vector3(0.0, 3.2, 4.6)
-	hunter.set("certain_range", 20.0)
+	hunter.set("sight_range", 20.0)
 	hunter.set("lose_sight_time", TEST_SECONDS + 2.0)
 	hunter.call("set_dev_attack_suspended", true)
 	hunter.set("current_target", player)

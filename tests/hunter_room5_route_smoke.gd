@@ -66,9 +66,12 @@ func _run() -> void:
 	hunter.set("current_target", player)
 	hunter.set("last_seen_position", target)
 	hunter.call("_set_state", LOCKED)
-	# Let it continue the blind charge briefly, just as it does after the player
-	# rounds the bedroom doorway, before the last-seen/trail logic takes over.
-	hunter.set("_sight_timer", 1.0)
+	# The chase is held open for the whole run. Letting the sight timer lapse
+	# would hand it to the fair-play disengage, which deliberately walks it away
+	# from the room - correct behaviour, and the opposite of what this test is
+	# about, which is purely whether it routes into Door 05's room without
+	# detouring down the stairs.
+	hunter.set("_sight_timer", TEST_SECONDS + 2.0)
 
 	var nav_agent := hunter.get_node("NavigationAgent3D") as NavigationAgent3D
 	var first_agent_path := PackedVector3Array()

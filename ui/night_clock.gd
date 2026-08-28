@@ -9,7 +9,8 @@ signal victory_reached()
 @export_range(0, 59, 1) var start_minute: int = 55
 @export_range(0, 23, 1) var victory_hour: int = 6
 @export_range(0, 59, 1) var victory_minute: int = 0
-@export var real_seconds_per_game_minute: float = 2.5
+## The night advances one in-game minute every 1.5 seconds of real time.
+@export var real_seconds_per_game_minute: float = 1.5
 
 @export_category("Game state")
 @export var player_path: NodePath = NodePath("../Player")

@@ -1,10 +1,13 @@
 extends CharacterBody3D
 
-## "Kẻ Đi Săn" / The Huntsman.
+## "Kẻ Đi Săn" / The Huntsman - the Abyssal Stalker.
 ##
 ## The third ghost, and the only one the night does not summon: this one is
 ## summoned by failure. When a defense door finally breaks, this is the thing
-## that walks in through the hole.
+## that walks in through the hole. Its body is built in `stalker_rig.gd`: a
+## hunched skeleton with arms longer than its legs, a crown of bone spines
+## around a hole where a face should be, and eyes on its chest, ribs, joints,
+## back and tail. This file is the hunt; that file is the anatomy.
 ##
 ## The other two are each built around one sense, and each has a counter that
 ## works on that sense:
@@ -12,41 +15,64 @@ extends CharacterBody3D
 ##   statue  - hunts by SIGHT, and freezes for as long as you keep looking.
 ##   crawler - hunts by SOUND, and loses you completely if you hold still.
 ##
-## The huntsman hunts by TRACK. It does not need to see you and it does not
-## need to hear you; it is not looking for you at all, it is reading the floor
-## you already walked on. Staring at it does nothing. Holding still does nothing
-## either - worse than nothing, because the trail that leads to where you are
-## standing is still lying there. Every habit the player has built against the
-## other two is worthless here, which is the entire reason it exists.
+## The huntsman hunts by TRACK, and then by SIGHT the moment it has one. It does
+## not need to see you to find you: it is reading the floor you already walked
+## on. Staring at it does nothing. Holding still does nothing either - worse than
+## nothing, because the trail that leads to where you are standing is still lying
+## there. Every habit the player has built against the other two is worthless
+## here, which is the entire reason it exists.
+##
+## The loop the player actually experiences is short. It patrols at 2 m/s -
+## slower than a walk, so while it has not seen you it is beatable on foot in any
+## direction, and its footfalls are loud enough to place it two rooms away. Then
+## it sees you. There is no cone and no spotting meter: it is covered in eyes, so
+## anything with a clear line to it inside `sight_range` is seen instantly, from
+## behind as readily as from in front. It roars - two and a half seconds of it,
+## standing still, heard in every room in the house - and only then does it come,
+## a shade faster than a sprinting player and no more. Those two and a half
+## seconds are worth about eighteen metres at a sprint, and eighteen metres is
+## the whole reason the charge is survivable. Breaking line of sight does not
+## shake it; staying out of sight for a full `lose_sight_time` does - and when it
+## does give up, it walks the other way instead of reading the trail you just
+## laid, which is the only concession this creature makes to being beatable.
 ##
 ##   ENTERING  it walks in through the breach, on foot, in plain view, and
-##             stops in the doorway to sweep the house with its lantern once.
+##             stops in the doorway to sweep the house with its gaze once.
 ##   TRACKING  it picks up the freshest spoor inside nose range and follows it,
 ##             room to room, at a walk. It is never in a hurry until it sees you.
 ##   CASTING   trail lost: it stops dead, sniffs, turns on the spot, then quarters
 ##             the house along its sweep route until it cuts the trail again.
-##   LOCKED    the lantern found you. A horn, and then a charge fractionally
-##             faster than a sprint - corners, doorways and stairs are the only
-##             counterplay, because it accelerates like something that weighs
-##             three hundred kilos and cannot turn.
+##   DISENGAGING  it lost somebody it was chasing. It walks away from where they
+##             went, reading nothing, for `disengage_duration` - the one place
+##             it is deliberately stupid, and the reason breaking line of sight
+##             is an escape rather than a delay.
+##   ROARING   it has seen somebody. It plants, turns to face them and screams
+##             the house down for two and a half seconds. That pause is the
+##             whole warning, and the head start that comes with it is the whole
+##             reason the charge can be outrun to a corner.
+##   LOCKED    the charge. Only a little faster than a sprint, so a corridor is
+##             a slow loss rather than an instant one - corners, doorways and
+##             stairs are the real counterplay, because it still accelerates
+##             like something that weighs three hundred kilos and cannot turn.
 ##   SEIZING   the grab. Half a second of windup, and that half second is the
 ##             only window there is.
-##   PLACING_TRAP  while it is not charging, it can spend a moment laying one
-##             of at most three traps in the house.
-##   LEAVING   the hunt ran out of time: it walks back out through a breach.
 ##
 ## Two rules make it the worst thing in the building:
 ##
 ##   1. It never teleports and it never vanishes while it is inside. From the
 ##      moment it steps in it is a physical body somewhere in the house, and its
-##      boots and the hook it drags along the floor are audible through walls.
+##      feet and the tail it drags along the floor are audible through walls.
 ##      The statue is gone when you look away and the crawler is gone between
-##      hunts. This is simply *in the house* until it decides to leave.
-##   2. It leaves the way it came in. Rebuild every breach while it is inside
-##      and it has no way out: it is sealed in with you until dawn, and being
-##      sealed in makes it worse. Repairing your own house is therefore no
-##      longer an unambiguously correct move, which is the trap the whole
-##      creature is built to spring.
+##      hunts. This is simply *in the house*.
+##   2. It never leaves. There is no hunt timer, no giving up and no walking
+##      back out through the hole it came in by: once it is inside, it is inside
+##      until dawn. Rebuilding every breach behind it does not lock it out of
+##      anything it was going to do anyway - it only makes it faster and
+##      sharper-nosed for the rest of the night.
+##
+## It also has ears. Not the crawler's - that creature *is* its hearing - but
+## good enough that walking upright near it brings it over. Crouching is the only
+## movement it cannot hear, and standing still is silent.
 
 enum HunterState {
 	DORMANT,
@@ -57,14 +83,15 @@ enum HunterState {
 	LOCKED,
 	SEIZING,
 	RECOVERING,
-	LEAVING,
-	PLACING_TRAP,
+	## Appended rather than slotted next to LOCKED on purpose: the smoke tests
+	## mirror this enum by index, so the numbering above has to stay put.
+	ROARING,
+	DISENGAGING,
 }
 
 signal state_changed(new_state: HunterState)
 signal entry_scheduled(door: Node, delay: float)
 signal entered_house(door: Node)
-signal left_house(door: Node)
 ## Every breach was rebuilt while it was still inside. It cannot leave now.
 signal sealed_inside()
 signal trail_picked_up(position: Vector3)
@@ -74,24 +101,29 @@ signal target_lost(last_seen: Vector3)
 signal seize_started(player: Node3D)
 signal seize_missed()
 signal killed_player(player: Node3D)
-signal trap_placed(trap: Node3D)
 
 @export_category('Behavior')
 @export var active: bool = true
-## Authored walking search pace, before the non-chase multiplier is applied.
-@export var walk_speed: float = 1.85
-## Authored pace once it has a live trail under it, before the 30% multiplier.
-@export var track_speed: float = 2.6
-## The charge. The player sprints at 2.5 * 1.3 = 3.25 m/s, so a straight
-## corridor is simply lost - the escape is geometry, not speed.
-@export var charge_speed: float = 3.5
-## Every locomotion state except the direct chase uses this multiplier. The
-## charge keeps its authored speed so spotting a player remains a distinct beat.
-@export var non_chase_speed_multiplier: float = 1.3
-## Deliberately low. Everything about the escape depends on it needing several
-## metres to get moving and being unable to take a corner cleanly.
-@export var acceleration: float = 11.0
-@export var turn_speed: float = 4.2
+## Patrol pace. Everything it does that is not a charge moves at this, and it is
+## slower than a walking player: while it has not seen you, it is beatable on
+## foot in any direction.
+@export var walk_speed: float = 2.0
+## Same as the patrol pace. It does not hurry until it has seen somebody.
+@export var track_speed: float = 2.0
+## The charge, and it is deliberately only a shade above a sprinting player
+## (3.0 * 2.5 = 7.5 m/s). A corridor is a slow loss rather than an instant one:
+## you keep the head start you already had and give it up a little at a time,
+## which leaves room to actually reach the corner you were running for. The
+## escape is still breaking line of sight and staying broken for
+## `lose_sight_time`.
+@export var charge_speed: float = 8.0
+## Left at 1.0 so the patrol pace above is exactly the speed it walks at.
+@export var non_chase_speed_multiplier: float = 1.0
+## Enough that the charge speed above is a real number and not an aspiration, and
+## no more: it still needs a couple of metres to get moving and still cannot take
+## a corner, which is where the whole escape lives.
+@export var acceleration: float = 10.0
+@export var turn_speed: float = 4.8
 ## How much of its speed survives moving in a direction it is not yet facing.
 ## This is what turns a doorway into cover rather than a formality.
 @export_range(0.0, 1.0) var off_axis_speed_floor: float = 0.34
@@ -112,18 +144,6 @@ signal trap_placed(trap: Node3D)
 ## It stops in the doorway and sweeps the lantern across the house before it
 ## starts. This is the announcement, and it is the only one you get.
 @export var entry_scan_duration: float = 3.5
-## Quiet between visits once it has left. Long: the house has to feel survivable
-## again before the next door goes.
-@export var reentry_cooldown_min: float = 75.0
-@export var reentry_cooldown_max: float = 140.0
-
-@export_category('Hunt')
-## How long it will stay inside without killing anyone before it gives up.
-@export var hunt_duration: float = 170.0
-## Every time it gets a lock on somebody the hunt is extended. Being seen is
-## what keeps it in the house.
-@export var hunt_extension_per_lock: float = 30.0
-@export var leave_timeout: float = 45.0
 
 @export_category('Tracking')
 ## How often a player's position is written into the trail. Everything about the
@@ -165,34 +185,37 @@ signal trap_placed(trap: Node3D)
 ## strand the whole hunt.
 @export var trail_point_timeout: float = 9.0
 
-@export_category('Lantern')
-## The lantern is its eye. It hangs off its own hand, sweeps while it searches,
-## and locks dead-ahead the moment it finds something.
-@export var lantern_range: float = 15.0
-@export var lantern_half_angle: float = 27.0
-@export var lantern_sweep_half_angle: float = 40.0
-@export var lantern_sweep_speed: float = 0.9
-## Time in the beam before it locks on, at contact range and at maximum range.
-@export var spot_time_near: float = 0.18
-@export var spot_time_far: float = 0.85
-@export_range(0.0, 1.0) var crouch_spot_multiplier: float = 0.55
-## Inside this it does not need the beam at all. Nothing survives sharing a
-## corner with it.
-@export var certain_range: float = 4.0
-## How long it keeps charging after losing sight. Long enough that ducking
-## behind one sofa is not an escape.
+@export_category('Sight')
+## It has eyes on its chest, its ribs, its joints, its back and its tail, so
+## there is no such thing as being behind it: anything inside this range with
+## clear line of sight is seen, immediately, from any angle. Walls are the only
+## thing that works.
+@export var sight_range: float = 15.0
+## The roar. It stops dead, it is heard everywhere in the house, and only then
+## does it start moving - which is the entire warning the player gets, so it is
+## also the entire head start. At a sprint this is worth about eighteen metres,
+## and since the charge only closes half a metre a second on a sprinting player,
+## eighteen metres is enough room to actually reach a corner and break the line
+## of sight. Shorten this and the creature stops being escapable.
+@export var roar_duration: float = 2.5
+## How long it keeps charging after losing sight. Breaking line of sight does
+## not shake it: you have to stay out of sight for this whole stretch.
 @export var lose_sight_time: float = 5.0
+## Deliberate fair play, and the one place this creature is allowed to be stupid.
+## When it finally loses somebody it has been chasing, the *correct* move for it
+## is to read the very fresh trail it is standing on and walk straight back onto
+## them - which is unbeatable and therefore not a game. Instead it turns around
+## and walks this far in the opposite direction, ignoring the trail entirely
+## while it does, which is what converts "I broke line of sight" into actually
+## getting away.
+@export var disengage_distance: float = 11.0
+@export var disengage_duration: float = 7.0
 @export_flags_3d_physics var sight_blocking_mask: int = 1
-
-@export_category('Traps')
-@export var hunter_trap_scene: PackedScene = preload('res://ghosts/hunter_trap.tscn')
-@export_range(0, 12, 1) var max_active_traps: int = 3
-## It only lays traps while searching. Seeing a player cancels the placement and
-## immediately restores the chase override.
-@export var trap_initial_delay: float = 4.0
-@export var trap_place_cooldown: float = 18.0
-@export var trap_place_duration: float = 1.15
-@export var trap_min_spacing: float = 2.5
+## Cosmetic only. The gaze cone still scans while it searches because a light
+## sweeping a corridor is how the player sees it coming, but detection has not
+## been a cone since it grew the eyes.
+@export var gaze_sweep_half_angle: float = 40.0
+@export var gaze_sweep_speed: float = 0.9
 
 @export_category('Casting')
 ## Standing still, sniffing, turning on the spot after the trail runs out.
@@ -204,10 +227,21 @@ signal trap_placed(trap: Node3D)
 ## Abandon a sweep marker that will not resolve, so one unreachable room cannot
 ## strand the whole hunt.
 @export var sweep_point_timeout: float = 26.0
-## It is not deaf, it is just not listening. A full sprint this close is loud
-## enough to give it a fresh place to start reading the floor.
-@export var running_hearing_range: float = 11.0
-@export_range(0.0, 1.0) var running_hearing_loudness: float = 0.6
+@export_category('Hearing')
+## It has ears, and they are good - just not the crawler's, whose whole design is
+## sound and which reaches 16 m. Range scales with how loud you are, exactly the
+## same shape as the crawler's, on a smaller radius: a sprint carries the full
+## `hearing_range`, walking upright carries about half of it, and crouching does
+## not reach the floor below. Hearing never locks on; it only ever hands the
+## creature somewhere new to go and start reading the ground.
+@export var hearing_range: float = 13.0
+## The speed treated as maximum loudness. Set to a sprint, so ordinary walking
+## sits well down the scale instead of pinning it.
+@export var hearing_reference_speed: float = 7.0
+## Below this it hears nothing at all. Standing still is silent, and so is
+## crouch-walking - which is the only movement that is.
+@export_range(0.0, 1.0) var hearing_loudness_floor: float = 0.16
+@export_range(0.0, 1.0) var crouch_hearing_scale: float = 0.35
 
 @export_category('Unsticking')
 ## How long it may make no progress toward whatever it is walking to before it
@@ -268,7 +302,12 @@ signal trap_placed(trap: Node3D)
 ## start coming up.
 @export var dread_radius: float = 13.0
 @export var stride_length: float = 0.95
-@export var footstep_volume_db: float = -6.0
+## Its stride opens up when it charges, so a four-times-faster body does not
+## produce four times as many footfalls a second.
+@export var charge_stride_scale: float = 2.1
+## Loud on purpose, and it carries. Hearing which room the footfalls are in and
+## going the other way is the counterplay to something that outruns you.
+@export var footstep_volume_db: float = 4.0
 
 var state: HunterState = HunterState.DORMANT
 ## True from the moment it steps through a breach until it steps back out.
@@ -280,9 +319,7 @@ var prey_marked: bool = false
 var manifested: bool = false
 var current_target: CharacterBody3D
 var last_seen_position: Vector3
-var hunt_time_remaining: float = 0.0
 var entry_door: Node3D
-var exit_door: Node3D
 var dev_attack_suspended: bool = false
 var attack_resume_grace_remaining: float = 0.0
 
@@ -308,12 +345,11 @@ var _unstick_timer: float = 0.0
 var _unstick_sign: float = 1.0
 var _failed_goals: int = 0
 var _dead_spots: Array[Dictionary] = []
-var _spot_progress: Dictionary = {}
 var _sight_timer: float = 0.0
 var _target_visible_now: bool = false
+var _footstep_token: int = 0
 var _entry_timer: float = 0.0
 var _pending_entry_door: Node3D
-var _reentry_cooldown: float = 0.0
 var _state_timer: float = 0.0
 var _seize_cooldown_timer: float = 0.0
 var _sweep_index: int = 0
@@ -329,44 +365,29 @@ var _noise_lead_time: float = -1.0
 ## player vanished. Reading arbitrary spoor before that made a nearby mark under
 ## the floor send it down a staircase, only for it to climb straight back up.
 var _last_seen_lead: Vector3
+var _disengage_point: Vector3
 var _has_last_seen_lead: bool = false
-var _active_traps: Array[Node3D] = []
-var _trap_cooldown_remaining: float = 0.0
-var _state_before_trap: HunterState = HunterState.TRACKING
 var _breached_doors: Array[Node] = []
 var _travel_target: Vector3
-var _travel_stage: int = 0
 var _normal_collision_layer: int
 var _normal_collision_mask: int
 var _gravity: float = ProjectSettings.get_setting('physics/3d/default_gravity')
 
-var _stride_phase: float = 0.0
 var _agitation: float = 0.0
 var _lantern_energy: float = 0.0
 var _sweep_phase: float = 0.0
 var _sniff_timer: float = 0.0
-var _jaw_open: float = 0.0
-var _hide_material: ShaderMaterial
-var _visual_rest_y: float = 0.0
 
-@onready var visual_root: Node3D = $VisualRoot
-@onready var body_pivot: Node3D = $VisualRoot/BodyPivot
-@onready var torso_pivot: Node3D = $VisualRoot/BodyPivot/TorsoPivot
-@onready var neck_pivot: Node3D = $VisualRoot/BodyPivot/TorsoPivot/NeckPivot
-@onready var head_pivot: Node3D = $VisualRoot/BodyPivot/TorsoPivot/NeckPivot/HeadPivot
-@onready var jaw_pivot: Node3D = $VisualRoot/BodyPivot/TorsoPivot/NeckPivot/HeadPivot/JawPivot
-@onready var coat_pivot: Node3D = $VisualRoot/BodyPivot/CoatPivot
-@onready var lantern_arm: Node3D = $VisualRoot/BodyPivot/TorsoPivot/LanternArm
-@onready var lantern_forearm: Node3D = $VisualRoot/BodyPivot/TorsoPivot/LanternArm/ForearmPivot
-@onready var lantern_pivot: Node3D = $VisualRoot/BodyPivot/TorsoPivot/LanternArm/ForearmPivot/LanternPivot
-@onready var lantern_light: SpotLight3D = $VisualRoot/BodyPivot/TorsoPivot/LanternArm/ForearmPivot/LanternPivot/LanternLight
-@onready var lantern_flame: MeshInstance3D = $VisualRoot/BodyPivot/TorsoPivot/LanternArm/ForearmPivot/LanternPivot/Flame
-@onready var hook_arm: Node3D = $VisualRoot/BodyPivot/TorsoPivot/HookArm
-@onready var hook_forearm: Node3D = $VisualRoot/BodyPivot/TorsoPivot/HookArm/ForearmPivot
-@onready var left_leg_pivot: Node3D = $VisualRoot/BodyPivot/LeftLegPivot
-@onready var left_shin_pivot: Node3D = $VisualRoot/BodyPivot/LeftLegPivot/ShinPivot
-@onready var right_leg_pivot: Node3D = $VisualRoot/BodyPivot/RightLegPivot
-@onready var right_shin_pivot: Node3D = $VisualRoot/BodyPivot/RightLegPivot/ShinPivot
+## The body lives in `stalker_rig.gd` and builds itself: this script owns the
+## hunt and never touches a bone. Everything below is set once per frame in
+## `_update_presentation`, and the rig works out what two hundred parts should
+## be doing about it.
+@onready var visual_root: StalkerRig = $VisualRoot
+## The gaze cone, which is the creature's own crown of eyes rather than
+## anything it is carrying. The `lantern_*` tuning names are kept throughout -
+## the mechanic is unchanged and the README's vocabulary still holds - but the
+## light now comes out of the hole in the middle of its head.
+var lantern_light: SpotLight3D
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var footstep_audio: AudioStreamPlayer3D = $FootstepAudio
 @onready var hook_audio: AudioStreamPlayer3D = $HookAudio
@@ -376,8 +397,8 @@ var _visual_rest_y: float = 0.0
 @onready var seize_audio: AudioStreamPlayer3D = $SeizeAudio
 @onready var breach_audio: AudioStreamPlayer3D = $BreachAudio
 
-## Transient starts inside the boot recording, so a step can be triggered from an
-## arbitrary offset instead of replaying the same two seconds of walking.
+## Transient starts inside the footfall recording, so a step can be triggered
+## from an arbitrary offset instead of replaying the same two seconds of walking.
 const FOOTSTEP_OFFSETS: Array[float] = [0.12, 0.68, 1.21, 1.79, 2.34, 2.92, 3.44]
 const FOOTSTEP_SLICE := 0.34
 
@@ -389,8 +410,11 @@ func _ready() -> void:
 	_normal_collision_mask = collision_mask
 	last_seen_position = global_position
 	_travel_target = global_position
-	_visual_rest_y = visual_root.position.y
-	_prepare_materials()
+	# The rig is a child, so it has already built itself by the time this runs.
+	visual_root.build()
+	visual_root.stride_length = stride_length
+	visual_root.foot_planted.connect(_play_footstep)
+	lantern_light = visual_root.gaze_light
 	_set_manifested(false)
 	# Doors and route markers are ordinary level nodes, so they only exist once
 	# the rest of the scene has entered the tree.
@@ -437,15 +461,14 @@ func _physics_process(delta: float) -> void:
 		_update_player_threat()
 		return
 
-	if inside_house:
-		_update_hunt_timer(delta)
 	# Detection runs from the moment it is visible, which includes the walk in:
 	# stand in the doorway watching it arrive and it can lock on to you there.
 	if manifested:
-		_update_lantern_detection(delta)
+		_update_sight(delta)
 	_update_chase_sight_memory(delta)
 	_enforce_chase_override()
-	_update_trap_skill(delta)
+	# Ears run every frame, in every state, in or out of a chase.
+	_listen(delta)
 
 	match state:
 		HunterState.ENTERING:
@@ -456,16 +479,16 @@ func _physics_process(delta: float) -> void:
 			_update_casting(delta)
 		HunterState.SWEEPING:
 			_update_sweeping(delta)
+		HunterState.DISENGAGING:
+			_update_disengaging(delta)
+		HunterState.ROARING:
+			_update_roaring(delta)
 		HunterState.LOCKED:
 			_update_locked(delta)
 		HunterState.SEIZING:
 			_update_seizing(delta)
 		HunterState.RECOVERING:
 			_update_recovering(delta)
-		HunterState.LEAVING:
-			_update_leaving(delta)
-		HunterState.PLACING_TRAP:
-			_update_placing_trap(delta)
 
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
@@ -603,80 +626,57 @@ func _pick_cold_lead() -> int:
 
 
 ## Public noise channel, mirroring the crawler's so that anything in the level
-## that already reports noise can report to this too. It does not hunt sound -
-## a noise only ever gives it a place to go and start reading the floor.
+## that already reports noise can report to this too. It does not hunt sound the
+## way the crawler does - a noise only ever gives it a place to go and start
+## reading the floor - but it is not deaf, and standing near it while upright is
+## enough to bring it over.
 func report_noise(position: Vector3, loudness: float, _source: Node = null) -> void:
-	if not inside_house or loudness < running_hearing_loudness:
+	if not inside_house or loudness < hearing_loudness_floor:
 		return
-	if global_position.distance_to(position) > running_hearing_range:
+	# Louder carries further, on the same curve as the crawler's ears and a
+	# smaller radius: a sprint is heard across a floor, a walk across a room.
+	if global_position.distance_to(position) > hearing_range * clampf(loudness, 0.0, 1.0):
 		return
 	_noise_lead = position
 	_noise_lead_time = -1.0
 	_has_noise_lead = true
 
 
-func _listen_for_running() -> void:
+func _listen(_delta: float) -> void:
 	for player: CharacterBody3D in _living_players():
 		var real_velocity := player.get_real_velocity()
 		var horizontal_speed := Vector2(real_velocity.x, real_velocity.z).length()
-		var loudness := clampf(horizontal_speed / maxf(spoor_reference_speed, 0.01), 0.0, 1.0)
+		var loudness := clampf(horizontal_speed / maxf(hearing_reference_speed, 0.01), 0.0, 1.0)
 		if 'is_crouching' in player and player.is_crouching:
-			loudness *= crouch_spoor_multiplier
+			loudness *= crouch_hearing_scale
 		report_noise(player.global_position, loudness, player)
 
 
 # --- The lantern --------------------------------------------------------------
 
 
-## The lantern is the only way it can find you directly, and it is a physical
-## object hanging off its hand: what the beam is pointing at on screen is
-## exactly what can get you caught.
-func _update_lantern_detection(delta: float) -> void:
+## Sight is the only way it finds you directly, and there is no cone and no
+## build-up: it is covered in eyes, so anything inside `sight_range` with an
+## unbroken line to it is seen the frame it becomes visible. Nothing about which
+## way it happens to be facing matters, and crouching does not help. A wall
+## between you is the only thing that does.
+func _update_sight(_delta: float) -> void:
 	if state == HunterState.SEIZING or _attacks_blocked():
 		return
 	# A chase owns the AI until its target has genuinely broken line of sight for
-	# the full grace period. A second lantern contact must not switch prey or let
-	# a search/placement state steal control for a frame.
+	# the full grace period. Seeing a second player must not switch prey or let a
+	# search/placement state steal control for a frame.
 	if is_instance_valid(current_target):
 		return
 
 	for player: CharacterBody3D in _living_players():
-		var key := player.get_instance_id()
-		var progress: float = _spot_progress.get(key, 0.0)
-		var distance := global_position.distance_to(player.global_position)
-		var in_beam := _is_in_lantern(player)
-		var close_enough := distance <= certain_range and _has_line_of_sight(player)
-
-		if in_beam or close_enough:
-			var span := maxf(lantern_range - certain_range, 0.01)
-			var far_ratio := clampf((distance - certain_range) / span, 0.0, 1.0)
-			var required := lerpf(spot_time_near, spot_time_far, far_ratio)
-			if 'is_crouching' in player and player.is_crouching:
-				required /= maxf(crouch_spot_multiplier, 0.05)
-			progress += delta / maxf(required, 0.02)
-		else:
-			# Decays rather than resetting: stepping in and out of a sweeping beam
-			# repeatedly is not a way to stay unseen forever.
-			progress -= delta * 0.75
-
-		progress = clampf(progress, 0.0, 1.2)
-		_spot_progress[key] = progress
-
-		if progress >= 1.0 and _is_targetable(player):
+		if _can_see(player) and _is_targetable(player):
 			_lock_on(player)
 			return
 
 
-func _is_in_lantern(player: CharacterBody3D) -> bool:
-	var beam_origin := lantern_light.global_position
-	var to_player := (player.global_position + Vector3.UP * 0.9) - beam_origin
-	var distance := to_player.length()
-	if distance > lantern_range or distance < 0.05:
-		return false
-	# -Z is the SpotLight3D's own beam axis, so the sweep animation applied to
-	# the lantern pivot changes detection exactly as it changes the visible cone.
-	var beam_axis := -lantern_light.global_basis.z.normalized()
-	if beam_axis.dot(to_player / distance) < cos(deg_to_rad(lantern_half_angle)):
+func _can_see(player: CharacterBody3D) -> bool:
+	if global_position.distance_to(player.global_position) > sight_range:
 		return false
 	return _has_line_of_sight(player)
 
@@ -701,24 +701,22 @@ func _lock_on(player: CharacterBody3D) -> void:
 		# Spotted somebody through the doorway on the way in. The hunt starts
 		# here rather than after the scripted arrival scan.
 		inside_house = true
-		hunt_time_remaining = hunt_duration
 		entered_house.emit(entry_door)
 	current_target = player
 	last_seen_position = player.global_position
 	_sight_timer = lose_sight_time
-	_spot_progress.clear()
-	# Once it has had you in the light it has your scent for the rest of the
-	# night, and every lock keeps it in the house longer.
+	# Once it has seen you it has your scent for the rest of the night.
 	prey_marked = true
-	hunt_time_remaining += hunt_extension_per_lock
 	horn_audio.play()
-	_set_state(HunterState.LOCKED)
+	# It roars first and runs second. That one second is the whole warning, and
+	# it is heard in every room, so the players it has *not* seen get it too.
+	_set_state(HunterState.ROARING)
 	locked_on.emit(player)
 
 
 ## Once a player has been seen, chase is the highest-priority behavior. This is
 ## deliberately enforced every physics frame so scent tracking, hunt expiry,
-## trap placement and unsticking can never silently overwrite it.
+## and unsticking can never silently overwrite it.
 func _enforce_chase_override() -> void:
 	if not is_instance_valid(current_target):
 		return
@@ -726,6 +724,7 @@ func _enforce_chase_override() -> void:
 		_drop_target()
 		return
 	if state != HunterState.LOCKED \
+		and state != HunterState.ROARING \
 		and state != HunterState.SEIZING \
 		and state != HunterState.RECOVERING:
 		_set_state(HunterState.LOCKED)
@@ -741,7 +740,7 @@ func _update_chase_sight_memory(delta: float) -> void:
 	if not _is_targetable(current_target):
 		_drop_target()
 		return
-	_target_visible_now = global_position.distance_to(current_target.global_position) <= lantern_range \
+	_target_visible_now = global_position.distance_to(current_target.global_position) <= sight_range \
 		and _has_line_of_sight(current_target)
 	if _target_visible_now:
 		_sight_timer = lose_sight_time
@@ -749,7 +748,9 @@ func _update_chase_sight_memory(delta: float) -> void:
 		return
 	_sight_timer -= delta
 	if _sight_timer <= 0.0:
-		_drop_target()
+		# The one path that earns the walk-away: they stayed out of sight for the
+		# whole grace period on their own.
+		_drop_target(true)
 
 
 # --- States -------------------------------------------------------------------
@@ -764,18 +765,19 @@ func _set_state(new_state: HunterState) -> void:
 		HunterState.CASTING:
 			_state_timer = cast_duration * (trapped_cast_scale if trapped else 1.0)
 			sniff_audio.play()
+		HunterState.ROARING:
+			_state_timer = roar_duration
+		HunterState.DISENGAGING:
+			_state_timer = disengage_duration
 		HunterState.SEIZING:
 			_state_timer = seize_windup
 		HunterState.RECOVERING:
 			_state_timer = seize_recovery
-		HunterState.LEAVING:
-			_state_timer = leave_timeout
 	state_changed.emit(new_state)
 
 
 func _update_dormant(delta: float) -> void:
-	_reentry_cooldown = maxf(_reentry_cooldown - delta, 0.0)
-	if not entry_enabled or _reentry_cooldown > 0.0:
+	if not entry_enabled:
 		return
 
 	if not is_instance_valid(_pending_entry_door):
@@ -802,7 +804,6 @@ func _update_entering(delta: float) -> void:
 	flat_offset.y = 0.0
 	if flat_offset.length() <= 0.7 or _state_timer >= entry_timeout:
 		inside_house = true
-		hunt_time_remaining = hunt_duration
 		_trail_time = -1.0
 		entered_house.emit(entry_door)
 		# It stops in the doorway and sweeps the room before it commits. This is
@@ -815,7 +816,6 @@ func _update_entering(delta: float) -> void:
 
 ## The core of the creature: read the floor, walk to the mark, read again.
 func _update_tracking(delta: float) -> void:
-	_listen_for_running()
 
 	# A broken line of sight is resolved before any scent decision. This keeps a
 	# corner dodge local: reach the doorway/corner where the player disappeared,
@@ -891,7 +891,6 @@ func _update_tracking(delta: float) -> void:
 ## Lost it. It stands where the trail ran out, turns on the spot, sniffs, and
 ## sweeps the lantern - and then it goes back to quartering the house.
 func _update_casting(delta: float) -> void:
-	_listen_for_running()
 	_brake(delta)
 
 	_sniff_timer -= delta
@@ -914,11 +913,24 @@ func _update_casting(delta: float) -> void:
 		_set_state(HunterState.SWEEPING)
 
 
+## Walking away. It deliberately does not read the floor while it does this: the
+## whole point is that the player who just broke line of sight gets the room to
+## be somewhere else. Sight is still live, so stepping back out in front of it
+## during the retreat starts the whole thing again.
+func _update_disengaging(delta: float) -> void:
+	_state_timer -= delta
+	var flat_offset := _disengage_point - global_position
+	flat_offset.y = 0.0
+	if _state_timer <= 0.0 or flat_offset.length() <= trail_arrive_distance * 1.5:
+		_set_state(HunterState.CASTING)
+		return
+	_steer_toward(delta, _disengage_point, _non_chase_speed(walk_speed))
+
+
 ## Quartering the house. It walks the authored route at its search pace, and
 ## stops at every marker to cast about again. Given long enough this covers the
 ## whole building, which is why hiding in one room forever is not a plan.
 func _update_sweeping(delta: float) -> void:
-	_listen_for_running()
 
 	if _pick_trail_sample() >= 0 or _has_noise_lead:
 		_set_state(HunterState.TRACKING)
@@ -957,6 +969,28 @@ func _update_sweeping(delta: float) -> void:
 
 ## It has you. Everything else stops mattering: it charges, and it does not
 ## stop charging until it has been unable to see you for several seconds.
+## The roar. It plants, turns to face what it has just seen, and screams the
+## house down for `roar_duration` before it moves a step. Everything the player
+## gets is in this second: which direction the sound came from, and the fact
+## that it is coming at all.
+func _update_roaring(delta: float) -> void:
+	if not is_instance_valid(current_target) or not _is_targetable(current_target):
+		_drop_target()
+		return
+
+	_brake(delta)
+	var to_target := current_target.global_position - global_position
+	to_target.y = 0.0
+	if to_target.length_squared() > 0.0004:
+		rotation.y = rotate_toward(
+			rotation.y, atan2(-to_target.x, -to_target.z), turn_speed * delta * 1.6
+		)
+
+	_state_timer -= delta
+	if _state_timer <= 0.0:
+		_set_state(HunterState.LOCKED)
+
+
 func _update_locked(delta: float) -> void:
 	if not is_instance_valid(current_target) or not _is_targetable(current_target):
 		_drop_target()
@@ -1035,69 +1069,63 @@ func _update_recovering(delta: float) -> void:
 		_drop_target()
 
 
-## Walks back out through a breach. If it reaches the doorway and the doorway is
-## gone, it is not going anywhere.
-func _update_leaving(delta: float) -> void:
-	_state_timer -= delta
-	if not is_instance_valid(exit_door) or not _is_breached(exit_door):
-		exit_door = _nearest_breached_door()
-		if not is_instance_valid(exit_door):
-			_become_trapped()
-			return
-		_travel_stage = 0
-
-	if _travel_stage == 0:
-		var inside_point := _door_side_point(exit_door, true)
-		if global_position.distance_to(inside_point) <= 1.0 or _state_timer <= 0.0:
-			_travel_stage = 1
-		else:
-			_steer_toward(delta, inside_point, _non_chase_speed(walk_speed))
-			return
-
-	var outside_point := _door_side_point(exit_door, false)
-	var flat_offset := outside_point - global_position
-	flat_offset.y = 0.0
-	if flat_offset.length() <= 0.8 or _state_timer <= -entry_timeout:
-		_leave_house()
-		return
-	_steer_toward(delta, outside_point, _non_chase_speed(walk_speed), false)
-
-
-func _update_hunt_timer(delta: float) -> void:
-	if trapped:
-		return
-	hunt_time_remaining -= delta
-	if hunt_time_remaining > 0.0:
-		return
-	if is_instance_valid(current_target):
-		# It is not walking out of the house with a player in the lantern.
-		hunt_time_remaining = hunt_extension_per_lock
-		return
-	if state != HunterState.LEAVING:
-		exit_door = _nearest_breached_door()
-		_travel_stage = 0
-		if not is_instance_valid(exit_door):
-			_become_trapped()
-			return
-		_set_state(HunterState.LEAVING)
-
-
-func _drop_target() -> void:
+## `walk_away` is the fair-play path, and is only ever passed by the sight timer
+## genuinely running out - not by a target dying, being protected by the door
+## minigame, or leaving the tree. Those are not escapes and do not earn one.
+func _drop_target(walk_away: bool = false) -> void:
 	var seen_at := last_seen_position
 	current_target = null
-	_spot_progress.clear()
-	# It goes to where you were before reading anything else. Losing it is only a
-	# reprieve: the trail is hottest exactly at the corner where it lost you.
-	_trail_time = _clock - 6.0
 	_has_trail_target = false
 	# A live sighting is stronger evidence than any sound/cold-cast lead that was
-	# queued before the lock, so none of those may resume after this corner check.
+	# queued before the lock, so none of those may resume after this.
 	_has_noise_lead = false
 	_noise_lead_time = -1.0
+
+	if walk_away and _begin_disengage(seen_at):
+		# It has given up on that corner entirely, and the trail clock is reset to
+		# now, so the marks the player laid getting away are already too old to
+		# read. It can only pick up wherever they go next.
+		_has_last_seen_lead = false
+		_trail_time = _clock
+		target_lost.emit(seen_at)
+		return
+
+	# Otherwise it goes to where you were before reading anything else: the trail
+	# is hottest exactly at the corner where it lost you.
+	_trail_time = _clock - 6.0
 	_last_seen_lead = seen_at
 	_has_last_seen_lead = true
 	_set_state(HunterState.TRACKING)
 	target_lost.emit(seen_at)
+
+
+## Picks somewhere to walk that is directly away from where the prey was last
+## seen, and returns false if the geometry does not offer one - in which case the
+## caller falls back to the ordinary "go and read that corner" behaviour rather
+## than standing still.
+func _begin_disengage(seen_at: Vector3) -> bool:
+	var away := global_position - seen_at
+	away.y = 0.0
+	if away.length_squared() < 0.04:
+		# It lost them while standing on top of them. Nothing to be opposite to,
+		# so it just keeps walking the way it is already facing.
+		away = -global_basis.z
+		away.y = 0.0
+	away = away.normalized()
+
+	# Fanned and shortening, so a wall directly behind it does not cancel the
+	# whole retreat.
+	for attempt: int in range(6):
+		var spread := deg_to_rad(float(attempt % 3 - 1) * 30.0)
+		var reach := disengage_distance * (1.0 - float(attempt) * 0.13)
+		var candidate := global_position + away.rotated(Vector3.UP, spread) * reach
+		var point := _standable_point(candidate)
+		if point == Vector3.INF:
+			continue
+		_disengage_point = point
+		_set_state(HunterState.DISENGAGING)
+		return true
+	return false
 
 
 func _kill(player: CharacterBody3D) -> void:
@@ -1107,122 +1135,6 @@ func _kill(player: CharacterBody3D) -> void:
 		player.kill_by_ghost(self)
 	killed_player.emit(player)
 	_set_state(HunterState.RECOVERING)
-
-
-# --- Trap skill ---------------------------------------------------------------
-
-
-func _update_trap_skill(delta: float) -> void:
-	_prune_active_traps()
-	_trap_cooldown_remaining = maxf(_trap_cooldown_remaining - delta, 0.0)
-	if state == HunterState.PLACING_TRAP:
-		return
-	if not inside_house \
-		or not manifested \
-		or is_instance_valid(current_target) \
-		or _active_traps.size() >= max_active_traps \
-		or _trap_cooldown_remaining > 0.0:
-		return
-	if state != HunterState.TRACKING \
-		and state != HunterState.CASTING \
-		and state != HunterState.SWEEPING:
-		return
-
-	var floor_position := _trap_floor_position()
-	if floor_position == Vector3.INF or not _is_trap_position_clear(floor_position):
-		# Recheck soon without hammering a bad stair/doorway every frame.
-		_trap_cooldown_remaining = 1.0
-		return
-	_state_before_trap = state
-	_trap_cooldown_remaining = maxf(trap_place_cooldown, 0.0)
-	_set_state(HunterState.PLACING_TRAP)
-	_state_timer = maxf(trap_place_duration, 0.0)
-
-
-func _update_placing_trap(delta: float) -> void:
-	_brake(delta)
-	_state_timer -= delta
-	if _state_timer > 0.0:
-		return
-
-	var floor_position := _trap_floor_position()
-	if floor_position != Vector3.INF and _is_trap_position_clear(floor_position):
-		_spawn_trap(floor_position)
-	var resume_state := _state_before_trap
-	if resume_state != HunterState.TRACKING \
-		and resume_state != HunterState.CASTING \
-		and resume_state != HunterState.SWEEPING:
-		resume_state = HunterState.TRACKING
-	_set_state(resume_state)
-
-
-func _trap_floor_position() -> Vector3:
-	var query := PhysicsRayQueryParameters3D.create(
-		global_position + Vector3.UP * 0.8,
-		global_position + Vector3.DOWN * 1.4,
-		sight_blocking_mask,
-		[get_rid()]
-	)
-	query.hit_from_inside = true
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty():
-		return Vector3.INF
-	var normal: Vector3 = hit.get('normal', Vector3.UP)
-	if normal.dot(Vector3.UP) < 0.75:
-		return Vector3.INF
-	return hit['position']
-
-
-func _is_trap_position_clear(position: Vector3) -> bool:
-	for trap: Node3D in _active_traps:
-		if is_instance_valid(trap) \
-			and trap.global_position.distance_to(position) < trap_min_spacing:
-			return false
-	return true
-
-
-func _spawn_trap(position: Vector3) -> bool:
-	_prune_active_traps()
-	if not hunter_trap_scene or _active_traps.size() >= max_active_traps:
-		return false
-	var trap := hunter_trap_scene.instantiate() as Node3D
-	if not trap or not is_instance_valid(get_parent()):
-		if trap:
-			trap.queue_free()
-		return false
-	get_parent().add_child(trap)
-	trap.global_position = position + Vector3.UP * 0.025
-	if trap.has_method('set_hunter'):
-		trap.call('set_hunter', self)
-	_active_traps.append(trap)
-	trap_placed.emit(trap)
-	return true
-
-
-func _prune_active_traps() -> void:
-	for index: int in range(_active_traps.size() - 1, -1, -1):
-		if not is_instance_valid(_active_traps[index]) \
-			or _active_traps[index].is_queued_for_deletion():
-			_active_traps.remove_at(index)
-
-
-func get_active_trap_count() -> int:
-	_prune_active_traps()
-	return _active_traps.size()
-
-
-## Deterministic hook used by smoke tests and development tools.
-func dev_place_trap(position: Vector3) -> bool:
-	if not inside_house or not _is_trap_position_clear(position):
-		return false
-	return _spawn_trap(position)
-
-
-func _exit_tree() -> void:
-	for trap: Node3D in _active_traps:
-		if is_instance_valid(trap):
-			trap.queue_free()
-	_active_traps.clear()
 
 
 # --- Doors --------------------------------------------------------------------
@@ -1344,32 +1256,16 @@ func _begin_entry(door: Node3D) -> void:
 	_set_state(HunterState.ENTERING)
 
 
-func _leave_house() -> void:
-	var door := exit_door
-	inside_house = false
-	current_target = null
-	exit_door = null
-	entry_door = null
-	_reentry_cooldown = randf_range(reentry_cooldown_min, reentry_cooldown_max)
-	_pending_entry_door = null
-	_set_manifested(false)
-	velocity = Vector3.ZERO
-	_set_state(HunterState.DORMANT)
-	left_house.emit(door)
-
-
-## Every breach rebuilt behind it. It has no way out of the building now, and it
-## stops pacing itself: it is here until dawn.
+## Every breach rebuilt behind it. It was never going to walk out on its own, but
+## now it could not even if it wanted to - and being sealed in makes it faster
+## and sharper-nosed for the rest of the night.
 func _become_trapped() -> void:
 	if trapped:
 		return
 	trapped = true
 	prey_marked = true
-	hunt_time_remaining = INF
 	horn_audio.play()
 	breach_audio.play()
-	if state == HunterState.LEAVING:
-		_set_state(HunterState.CASTING)
 	sealed_inside.emit()
 
 
@@ -1462,7 +1358,6 @@ func _update_goal_progress(delta: float) -> void:
 	var should_be_travelling := state == HunterState.TRACKING \
 		or state == HunterState.SWEEPING \
 		or state == HunterState.LOCKED \
-		or state == HunterState.LEAVING \
 		or state == HunterState.ENTERING
 	if not should_be_travelling or not _has_goal:
 		_no_progress_time = 0.0
@@ -1527,6 +1422,10 @@ func _abandon_goal() -> void:
 			_has_last_seen_lead = false
 			_has_noise_lead = false
 			_set_state(HunterState.CASTING)
+		HunterState.DISENGAGING:
+			# It cannot get to the spot it picked to sulk off to. That is fine -
+			# the retreat was never about arriving anywhere.
+			_set_state(HunterState.CASTING)
 		HunterState.SWEEPING:
 			_sweep_index += 1
 			_sweep_timer = sweep_point_timeout
@@ -1546,11 +1445,6 @@ func _abandon_goal() -> void:
 				# only legal transition back to tracking.
 				_direct_press_timer = direct_press_duration
 				_failed_goals = 0
-		HunterState.LEAVING:
-			if _travel_stage == 0:
-				_travel_stage = 1
-			else:
-				_leave_house()
 		HunterState.ENTERING:
 			_travel_target = _door_side_point(entry_door, true) if is_instance_valid(entry_door) \
 				else global_position
@@ -1692,7 +1586,6 @@ func set_dev_attack_suspended(suspended: bool) -> void:
 	dev_attack_suspended = suspended
 	if suspended:
 		attack_resume_grace_remaining = 0.0
-		_spot_progress.clear()
 		if state == HunterState.SEIZING:
 			_seize_cooldown_timer = seize_cooldown
 			_set_state(HunterState.RECOVERING)
@@ -1733,7 +1626,6 @@ func dev_force_spawn(target: CharacterBody3D = null) -> bool:
 	velocity = Vector3.ZERO
 	_reset_hunt_memory()
 	inside_house = true
-	hunt_time_remaining = hunt_duration
 	entry_door = null
 	_set_manifested(true)
 	horn_audio.play()
@@ -1742,9 +1634,39 @@ func dev_force_spawn(target: CharacterBody3D = null) -> bool:
 	return true
 
 
+## Spawns this hunter at a real breached exterior doorway.  Unlike the DevTools
+## helper, no player-relative offset is involved: it begins just inside the
+## hole, casts once, then progresses into the authored sweep route.
+func spawn_from_breached_door(door: Node3D) -> bool:
+	if not is_instance_valid(door):
+		return false
+
+	# `_door_side_point()` uses the full entry_offset for walking in from
+	# outdoors.  A breach spawn belongs at the threshold instead, with only
+	# enough inward clearance to keep the body out of the disabled door leaf.
+	var inside_reference := _door_side_point(door, true)
+	var inward := inside_reference - door.global_position
+	inward.y = 0.0
+	var doorway_position := door.global_position
+	if inward.length_squared() > 0.0001:
+		doorway_position += inward.normalized() * minf(entry_offset, 0.45)
+	var landing := _standable_point(doorway_position)
+	global_position = landing + Vector3.UP * 0.1 if landing != Vector3.INF \
+		else doorway_position + Vector3.UP * 0.15
+	velocity = Vector3.ZERO
+	entry_door = door
+	_pending_entry_door = null
+	_reset_hunt_memory()
+	inside_house = true
+	_set_manifested(true)
+	breach_audio.play()
+	_set_state(HunterState.CASTING)
+	entered_house.emit(door)
+	return true
+
+
 func _reset_hunt_memory() -> void:
 	current_target = null
-	_spot_progress.clear()
 	_trail_time = -1.0
 	_trail_target_time = -1.0
 	_trail_point_timer = 0.0
@@ -1764,8 +1686,6 @@ func _reset_hunt_memory() -> void:
 	_target_visible_now = false
 	_seize_cooldown_timer = 0.0
 	_sweep_timer = sweep_point_timeout
-	_trap_cooldown_remaining = maxf(trap_initial_delay, 0.0)
-	_travel_stage = 0
 	_sweep_index = _nearest_sweep_index()
 
 
@@ -1825,6 +1745,8 @@ func _update_player_threat() -> void:
 			threat = clampf(1.0 - distance / maxf(dread_radius, 0.01), 0.0, 1.0) * 0.6
 			if current_target == player:
 				match state:
+					HunterState.ROARING:
+						threat = maxf(threat, 0.9)
 					HunterState.LOCKED:
 						threat = maxf(threat, 0.85)
 					HunterState.SEIZING:
@@ -1839,94 +1761,85 @@ func _update_player_threat() -> void:
 # --- Presentation -------------------------------------------------------------
 
 
-func _prepare_materials() -> void:
-	for node: Node in find_children('*', 'MeshInstance3D', true, false):
-		var mesh_instance := node as MeshInstance3D
-		var material := mesh_instance.get_active_material(0) as ShaderMaterial
-		if material and material.shader:
-			_hide_material = material
-			break
-
-
+## Everything the body does comes out of five numbers. The AI decides what the
+## creature is *doing*; `stalker_rig.gd` decides what its two hundred parts look
+## like while it does it, so nothing in this file ever names a bone.
 func _update_presentation(delta: float) -> void:
 	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
-	var charging := state == HunterState.LOCKED or state == HunterState.SEIZING
+	var charging := state == HunterState.LOCKED \
+		or state == HunterState.SEIZING \
+		or state == HunterState.ROARING
+	var searching := state == HunterState.CASTING \
+		or state == HunterState.SWEEPING \
+		or state == HunterState.DISENGAGING \
+		or state == HunterState.TRACKING
 	var target_agitation := 0.0
 	if charging:
 		target_agitation = 1.0
 	elif state == HunterState.TRACKING:
 		target_agitation = 0.35
-	_agitation = move_toward(_agitation, target_agitation, delta * 1.6)
+	# The roar flares the crown wide open before it has moved a step, which is
+	# the visual half of the warning.
+	_agitation = move_toward(
+		_agitation, target_agitation, delta * (5.0 if state == HunterState.ROARING else 1.6)
+	)
 
-	# Gait. One stride per stride_length of ground covered, so the boots always
-	# land where the legs actually are.
-	var previous_phase := _stride_phase
-	_stride_phase += horizontal_speed / maxf(stride_length, 0.05) * delta * TAU * 0.5
-	var swing := sin(_stride_phase)
-	var opposite := sin(_stride_phase + PI)
-	left_leg_pivot.rotation.x = swing * 0.44
-	right_leg_pivot.rotation.x = opposite * 0.44
-	left_shin_pivot.rotation.x = -maxf(swing, 0.0) * 0.55
-	right_shin_pivot.rotation.x = -maxf(opposite, 0.0) * 0.55
-	# The whole body drops onto each planted boot: a heavy, uneven limp rather
-	# than a walk cycle.
-	visual_root.position.y = _visual_rest_y - absf(sin(_stride_phase)) * 0.045
-	body_pivot.rotation.z = sin(_stride_phase) * 0.05
-	body_pivot.rotation.x = lerpf(0.0, -0.16, _agitation) + sin(_stride_phase * 2.0) * 0.012
-	coat_pivot.rotation.x = -swing * 0.1
-	coat_pivot.rotation.z = sin(_stride_phase * 0.5) * 0.06
+	visual_root.locomotion_speed = horizontal_speed
+	visual_root.agitation = _agitation
+	visual_root.searching = searching
+	visual_root.charging = charging
+	# A charge covers ground four times faster than a patrol; at the patrol's
+	# stride that would be fourteen footfalls a second, which is a sewing
+	# machine rather than something heavy. It lengthens its stride instead.
+	visual_root.stride_length = stride_length * (charge_stride_scale if charging else 1.0)
+	# What all thirty eyes turn toward. It is whoever it is charging if it has
+	# one, and otherwise the nearest living player inside dread range - so the
+	# eyes on its back and its tail find you well before the head does.
+	visual_root.has_look_point = false
+	var watched := current_target if is_instance_valid(current_target) else _nearest_player()
+	if watched:
+		visual_root.has_look_point = true
+		visual_root.look_point = watched.global_position + Vector3.UP * 1.2
+	visual_root.advance(delta)
 
-	if int(previous_phase / PI) != int(_stride_phase / PI) and horizontal_speed > 0.25:
-		_play_footstep(horizontal_speed)
-
-	# The hook drags the whole time it moves. This is the sound that tells a
-	# player two rooms away exactly how close it is.
-	hook_arm.rotation.x = 0.22 + opposite * 0.12
-	hook_forearm.rotation.x = -0.35 + sin(_stride_phase * 0.5) * 0.08
+	# The claws and the tail drag the whole time it moves. This is the sound
+	# that tells a player two rooms away exactly how close it is.
 	_update_hook_audio(horizontal_speed)
 
-	# Head. It leads with the muzzle while tracking - nose down, reading - and
-	# snaps level the instant it is charging something.
-	var searching := state == HunterState.CASTING \
-		or state == HunterState.SWEEPING \
-		or state == HunterState.TRACKING
-	neck_pivot.rotation.x = lerpf(neck_pivot.rotation.x, 0.34 if searching else 0.05, minf(delta * 4.0, 1.0))
-	head_pivot.rotation.x = lerpf(head_pivot.rotation.x, 0.2 if searching else -0.08, minf(delta * 4.0, 1.0))
-	head_pivot.rotation.y = sin(_clock * (1.6 if searching else 0.4)) * (0.4 if searching else 0.08)
-	_jaw_open = move_toward(_jaw_open, 1.0 if charging else 0.12, delta * 3.0)
-	jaw_pivot.rotation.x = _jaw_open * 0.42
-
-	# Lantern. It sweeps while it is searching and locks dead on you when it is
+	# The gaze sweeps while it is searching and locks dead on you when it is
 	# not - so a beam that stops moving is the worst thing you can see.
-	_sweep_phase += delta * lantern_sweep_speed * (1.0 if searching else 0.25)
-	lantern_arm.rotation.x = lerpf(lantern_arm.rotation.x, -0.95 if charging else -0.72, minf(delta * 3.0, 1.0))
-	lantern_forearm.rotation.x = lerpf(lantern_forearm.rotation.x, -0.5, minf(delta * 3.0, 1.0))
-	lantern_pivot.rotation.y = lerp_angle(
-		lantern_pivot.rotation.y,
-		sin(_sweep_phase) * 0.3 if searching else 0.0,
-		minf(delta * 5.0, 1.0)
-	)
+	_sweep_phase += delta * gaze_sweep_speed * (1.0 if searching else 0.25)
 	_aim_lantern(delta, searching, charging)
 	var target_energy := 0.0
 	if manifested:
 		target_energy = lerpf(3.2, 6.4, _agitation)
 	_lantern_energy = move_toward(_lantern_energy, target_energy, delta * 8.0)
 	lantern_light.light_energy = _lantern_energy * (0.94 + sin(_clock * 13.0) * 0.06)
-	lantern_light.light_color = Color(1.0, 0.72, 0.36).lerp(Color(1.0, 0.36, 0.18), _agitation)
-	lantern_flame.scale = Vector3.ONE * (0.9 + sin(_clock * 17.0) * 0.08 + _agitation * 0.3)
-
-	if _hide_material:
-		_hide_material.set_shader_parameter('agitation', _agitation)
-		_hide_material.set_shader_parameter('lantern_glow', 0.35 + _agitation * 0.9)
+	# Cold and clinical while it is reading the floor; it goes over to something
+	# arterial the moment it has decided on you.
+	lantern_light.light_color = Color(0.62, 0.70, 0.82).lerp(Color(0.95, 0.38, 0.28), _agitation)
 
 	_update_breath_audio()
 
 
-## The beam is aimed in world space rather than inherited from the arm chain.
-## The arm swings, the lantern body swings with it, and the light itself stays
-## a deliberate, steerable cone: what the player sees sweeping the corridor is
-## exactly the volume `_is_in_lantern` tests against, so getting caught is never
-## something that happened off-screen.
+## Nearest living player inside dread range, or null. Only used to give the eyes
+## something to find; nothing about detection goes through here.
+func _nearest_player() -> CharacterBody3D:
+	var best: CharacterBody3D = null
+	var best_distance := dread_radius
+	for player: CharacterBody3D in _living_players():
+		var distance := global_position.distance_to(player.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = player
+	return best
+
+
+## The gaze is aimed in world space rather than inherited from the head chain.
+## The crown scans, the head cocks and the spines flare with it, and the light
+## itself stays a deliberate, steerable cone: what the player sees sweeping the
+## corridor is exactly the volume `_can_see` allows, so getting
+## caught is never something that happened off-screen.
 func _aim_lantern(delta: float, searching: bool, charging: bool) -> void:
 	var yaw := rotation.y
 	var pitch := -0.1
@@ -1938,7 +1851,7 @@ func _aim_lantern(delta: float, searching: bool, charging: bool) -> void:
 			yaw = atan2(-direction.x, -direction.z)
 			pitch = asin(clampf(direction.y, -1.0, 1.0))
 	elif searching:
-		yaw += sin(_sweep_phase) * deg_to_rad(lantern_sweep_half_angle)
+		yaw += sin(_sweep_phase) * deg_to_rad(gaze_sweep_half_angle)
 		pitch += sin(_sweep_phase * 0.5) * 0.06
 
 	var target_basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
@@ -1952,12 +1865,18 @@ func _play_footstep(horizontal_speed: float) -> void:
 	if not footstep_audio.stream:
 		return
 	var offset_index := randi() % FOOTSTEP_OFFSETS.size()
-	footstep_audio.pitch_scale = randf_range(0.62, 0.72)
+	footstep_audio.pitch_scale = randf_range(0.58, 0.68)
 	footstep_audio.volume_db = footstep_volume_db + minf(horizontal_speed, 3.5)
 	footstep_audio.play(FOOTSTEP_OFFSETS[offset_index])
-	# The recording is a continuous walk; cut it back to one boot fall.
+	# The recording is a continuous walk; cut it back to a single footfall. The
+	# token matters at charge pace, where steps land faster than the slice is
+	# long: without it, one step's timer silences the *next* step.
+	_footstep_token += 1
+	var token := _footstep_token
 	get_tree().create_timer(FOOTSTEP_SLICE, false).timeout.connect(
 		func() -> void:
+			if token != _footstep_token:
+				return
 			if is_instance_valid(footstep_audio) and footstep_audio.playing:
 				footstep_audio.stop()
 	)
@@ -2010,12 +1929,8 @@ func has_trail_lead() -> bool:
 	return _pick_trail_sample() >= 0
 
 
-func get_spot_progress(player: Node) -> float:
-	return float(_spot_progress.get(player.get_instance_id(), 0.0))
-
-
-func force_leave() -> void:
-	if not inside_house:
-		return
-	hunt_time_remaining = 0.0
-	_update_hunt_timer(0.0)
+## There is no spotting meter any more - it either has line of sight or it does
+## not - so this is the whole of the detection state a test can ask about.
+func can_currently_see(player: Node) -> bool:
+	var body := player as CharacterBody3D
+	return body != null and _can_see(body)

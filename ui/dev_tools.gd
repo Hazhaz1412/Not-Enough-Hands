@@ -10,10 +10,6 @@ signal panel_toggled(open: bool)
 @export var door_director_path: NodePath = NodePath("../DoorAttackDirector")
 @export var world_environment_path: NodePath = NodePath("../WorldEnvironment")
 
-## Power isn't present in every scene DevTools runs in (main.tscn has none
-## yet), so this is looked up by group at call time instead of an export
-## path - same reasoning as ElectricalDevice/Fusebox finding PowerManager.
-
 ## Colour of the through-wall entrance markers. Bright enough to read against
 ## the horror grade, transparent enough not to hide the door behind it.
 const XRAY_TINT := Color(0.15, 1.0, 0.72, 0.85)
@@ -26,13 +22,15 @@ var _environment_before_bright: Environment
 var _mouse_mode_before_open: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 
 @onready var panel: PanelContainer = $Panel
-@onready var invincible_toggle: CheckButton = $Panel/Margin/Content/Invincible
-@onready var fast_toggle: CheckButton = $Panel/Margin/Content/FastMovement
-@onready var noclip_toggle: CheckButton = $Panel/Margin/Content/Noclip
-@onready var xray_toggle: CheckButton = $Panel/Margin/Content/EntranceXray
-@onready var bright_toggle: CheckButton = $Panel/Margin/Content/BrightVision
-@onready var entrance_picker: OptionButton = $Panel/Margin/Content/DoorRow/Entrance
-@onready var status_label: Label = $Panel/Margin/Content/Status
+@onready var invincible_toggle: CheckButton = $Panel/Margin/Scroll/Content/Invincible
+@onready var fast_toggle: CheckButton = $Panel/Margin/Scroll/Content/FastMovement
+@onready var noclip_toggle: CheckButton = $Panel/Margin/Scroll/Content/Noclip
+@onready var xray_toggle: CheckButton = $Panel/Margin/Scroll/Content/EntranceXray
+@onready var bright_toggle: CheckButton = $Panel/Margin/Scroll/Content/BrightVision
+@onready var bladder_slider: HSlider = $Panel/Margin/Scroll/Content/BladderRow/BladderSlider
+@onready var bladder_value: Label = $Panel/Margin/Scroll/Content/BladderRow/BladderValue
+@onready var entrance_picker: OptionButton = $Panel/Margin/Scroll/Content/DoorRow/Entrance
+@onready var status_label: Label = $Panel/Margin/Scroll/Content/Status
 
 
 func _ready() -> void:
@@ -43,12 +41,14 @@ func _ready() -> void:
 	noclip_toggle.toggled.connect(set_noclip_enabled)
 	xray_toggle.toggled.connect(set_entrance_xray_enabled)
 	bright_toggle.toggled.connect(set_bright_vision_enabled)
-	$Panel/Margin/Content/SpawnStatue.pressed.connect(spawn_statue)
-	$Panel/Margin/Content/SpawnCrawler.pressed.connect(spawn_crawler)
-	$Panel/Margin/Content/SpawnHunter.pressed.connect(spawn_hunter)
-	$Panel/Margin/Content/DoorRow/AttackDoor.pressed.connect(force_selected_door_attack)
-	$Panel/Margin/Content/ForceBlackout.pressed.connect(force_blackout)
-	$Panel/Margin/Content/Close.pressed.connect(func() -> void: set_panel_open(false))
+	bladder_slider.value_changed.connect(set_bladder_level)
+	$Panel/Margin/Scroll/Content/SpawnStatue.pressed.connect(spawn_statue)
+	$Panel/Margin/Scroll/Content/SpawnCrawler.pressed.connect(spawn_crawler)
+	$Panel/Margin/Scroll/Content/SpawnHunter.pressed.connect(spawn_hunter)
+	$Panel/Margin/Scroll/Content/DoorRow/AttackDoor.pressed.connect(force_selected_door_attack)
+	$Panel/Margin/Scroll/Content/ForceBlackout.pressed.connect(force_blackout)
+	$Panel/Margin/Scroll/Content/Close.pressed.connect(func() -> void: set_panel_open(false))
+	_bind_bladder_slider()
 	set_panel_open(false)
 
 
@@ -69,6 +69,8 @@ func set_panel_open(open: bool) -> void:
 	if open:
 		_mouse_mode_before_open = Input.get_mouse_mode()
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		_bind_bladder_slider()
+		_sync_bladder_from_player()
 		status_label.text = "Sẵn sàng. Các thay đổi chỉ dành cho dev."
 	else:
 		Input.set_mouse_mode(_mouse_mode_before_open)
@@ -98,6 +100,43 @@ func set_noclip_enabled(enabled: bool) -> void:
 			if enabled
 			else "Bay xuyên tường: TẮT."
 		)
+
+
+func set_bladder_level(value: float) -> void:
+	_bind_bladder_slider()
+	var player := _player()
+	if not player or not player.has_method("set_bladder"):
+		return
+	player.call("set_bladder", value)
+	_sync_bladder_from_player()
+	status_label.text = "Bladder: %d%%" % roundi(bladder_slider.value)
+
+
+func _bind_bladder_slider() -> void:
+	var player := _player()
+	if not player or not ("bladder" in player):
+		return
+	var bladder_node := player.get("bladder") as PlayerBladder
+	if not bladder_node:
+		return
+	if not bladder_node.bladder_changed.is_connected(_on_bladder_changed):
+		bladder_node.bladder_changed.connect(_on_bladder_changed)
+	_on_bladder_changed(bladder_node.get_bladder(), bladder_node.bladder_max)
+
+
+func _sync_bladder_from_player() -> void:
+	var player := _player()
+	if not player or not ("bladder" in player):
+		return
+	var bladder_node := player.get("bladder") as PlayerBladder
+	if bladder_node:
+		_on_bladder_changed(bladder_node.get_bladder(), bladder_node.bladder_max)
+
+
+func _on_bladder_changed(value: float, max_value: float) -> void:
+	bladder_slider.max_value = maxf(max_value, 1.0)
+	bladder_slider.set_value_no_signal(clampf(value, 0.0, bladder_slider.max_value))
+	bladder_value.text = "%d%%" % roundi(bladder_slider.value)
 
 
 ## Turns the night off. The player owns the overlays and the blinking; the

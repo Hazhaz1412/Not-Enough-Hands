@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://toilet/toilet.gd" id="1_toilet"]
+[ext_resource type="Script" path="res://interaction/interactable.gd" id="2_interactable"]
+[ext_resource type="PackedScene" path="res://minigames/toilet_minigame.tscn" id="3_toilet_minigame"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_toilet"]
+size = Vector3(0.5, 0.8, 0.7)
+
+[node name="Toilet" type="StaticBody3D"]
+collision_layer = 3
+script = ExtResource("1_toilet")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0.1)
+shape = SubResource("BoxShape3D_toilet")
+
+[node name="Interactable" type="Node" parent="."]
+script = ExtResource("2_interactable")
+interaction_range = 2.0
+prompt_text = "DÙNG BỒN CẦU"
+
+[node name="MinigameViewPoint" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 1.2, 1.0)
+
+[node name="ToiletMinigame" parent="." instance=ExtResource("3_toilet_minigame")]

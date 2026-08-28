@@ -8,15 +8,16 @@ var killer_variant: StringName = &"statue"
 var scare_progress: float = 0.0
 var elapsed: float = 0.0
 
-## A long, narrow stag skull rather than a face: a high brow, no cheeks, and a
-## muzzle that runs off the bottom of the frame. Packed arrays cannot be `const`
-## in GDScript, so this is a plain member built once at load.
+## The outline the death screen ghosts in red behind the portrait: the ring the
+## crown of spines sits on, with the beak running off the bottom of the frame.
+## Packed arrays cannot be `const` in GDScript, so this is a plain member built
+## once at load.
 var hunter_skull := PackedVector2Array([
-	Vector2(-0.26, -0.32), Vector2(-0.05, -0.4),
-	Vector2(0.22, -0.3), Vector2(0.19, -0.02),
-	Vector2(0.12, 0.16), Vector2(0.1, 0.47),
-	Vector2(-0.1, 0.47), Vector2(-0.12, 0.16),
-	Vector2(-0.21, -0.02),
+	Vector2(-0.30, -0.26), Vector2(-0.12, -0.38),
+	Vector2(0.13, -0.37), Vector2(0.31, -0.21),
+	Vector2(0.30, 0.03), Vector2(0.12, 0.17),
+	Vector2(0.06, 0.52), Vector2(-0.06, 0.52),
+	Vector2(-0.13, 0.16), Vector2(-0.31, 0.01),
 ])
 
 
@@ -270,88 +271,149 @@ func _draw_crawler(unit: float) -> void:
 
 
 ## The huntsman is the only one of the three that is not a face at all: it is a
-## stag skull worn as a mask, lit from below by the lantern in its own hand. The
-## light source sits at the bottom of the frame and everything above it is drawn
-## as if raked by that light, which is exactly how the player last saw it.
+## hole, a ring of bone spines around it, and an eye on the end of every spine.
+## The light is not a lantern any more - it is the creature's own gaze coming
+## out of the hole, which is cold, does not flicker like a flame, and is already
+## pointed at you. The last thing that happens is the beak coming down the
+## middle of the frame.
 func _draw_hunter(unit: float) -> void:
-	var bone := Color(0.42, 0.385, 0.315, 1.0)
-	var bone_lit := Color(0.72, 0.58, 0.36, 1.0)
+	var bone := Color(0.255, 0.210, 0.158, 1.0)
+	var bone_lit := Color(0.44, 0.365, 0.272, 1.0)
 	var void_color := Color(0.002, 0.001, 0.001, 1.0)
-	var ember := Color(1.0, 0.55, 0.18, 1.0)
-	var hide := Color(0.075, 0.058, 0.048, 1.0)
+	var iris := Color(0.95, 0.55, 0.20, 1.0)
+	var flesh := Color(0.055, 0.045, 0.038, 1.0)
+	var gaze := Color(0.62, 0.70, 0.82)
 
-	# The lantern itself, swung up into your face at the last moment.
-	var flare_center := Vector2(0.0, 0.52) * unit
-	var flare_pulse := 1.0 + sin(elapsed * 29.0) * 0.12
-	draw_circle(flare_center, unit * 0.34 * flare_pulse, Color(ember.r, ember.g, ember.b, 0.1))
-	draw_circle(flare_center, unit * 0.19 * flare_pulse, Color(ember.r, ember.g, ember.b, 0.22))
-	draw_circle(flare_center, unit * 0.075 * flare_pulse, Color(1.0, 0.86, 0.6, 0.75))
+	# The gaze washing out of the hole. It pulses on the creature's own rhythm
+	# rather than guttering, which is the difference between a light something
+	# is carrying and a light something *is*.
+	var pulse := 1.0 + sin(elapsed * 6.0) * 0.10
+	draw_circle(Vector2.ZERO, unit * 0.70 * pulse, Color(gaze.r, gaze.g, gaze.b, 0.045))
+	draw_circle(Vector2.ZERO, unit * 0.38 * pulse, Color(gaze.r, gaze.g, gaze.b, 0.075))
 
-	# Hood, behind the mask, swallowing everything the lantern does not reach.
+	# Shoulders and ribcage, close enough now to fill everything the crown does
+	# not - and carrying eyes of their own.
 	draw_colored_polygon(_scaled(PackedVector2Array([
-		Vector2(-0.44, 0.4), Vector2(-0.4, -0.16),
-		Vector2(-0.16, -0.44), Vector2(0.18, -0.44),
-		Vector2(0.42, -0.14), Vector2(0.45, 0.42),
-	]), unit), hide)
+		Vector2(-0.66, 0.62), Vector2(-0.44, 0.20),
+		Vector2(-0.16, 0.06), Vector2(0.18, 0.06),
+		Vector2(0.46, 0.22), Vector2(0.68, 0.64),
+	]), unit), flesh)
 
-	# Antlers. Drawn as raw polylines rather than filled shapes so they stay
-	# spindly and wrong at any scale.
-	for side: float in [-1.0, 1.0]:
-		var beam := _scaled(PackedVector2Array([
-			Vector2(side * 0.12, -0.33), Vector2(side * 0.29, -0.48),
-			Vector2(side * 0.41, -0.72), Vector2(side * 0.46, -0.95),
-		]), unit)
-		draw_polyline(beam, bone, maxf(unit * 0.014, 3.0), true)
-		draw_polyline(_scaled(PackedVector2Array([
-			Vector2(side * 0.3, -0.5), Vector2(side * 0.5, -0.56), Vector2(side * 0.64, -0.72),
-		]), unit), bone, maxf(unit * 0.009, 2.0), true)
-		draw_polyline(_scaled(PackedVector2Array([
-			Vector2(side * 0.4, -0.7), Vector2(side * 0.58, -0.82), Vector2(side * 0.62, -1.0),
-		]), unit), bone, maxf(unit * 0.008, 2.0), true)
+	# The crown. Ten spines, each a polyline rather than a filled shape so they
+	# stay spindly and wrong at any scale, and each one twitching on its own.
+	var spines := 10
+	for index: int in spines:
+		var seed := float(index)
+		var angle := TAU * seed / float(spines) - PI * 0.5 \
+			+ sin(elapsed * (0.8 + seed * 0.11) + seed) * 0.045
+		var reach := 0.58 + sin(elapsed * (2.1 + seed * 0.23) + seed * 1.7) * 0.035
+		var out := Vector2(cos(angle), sin(angle))
+		var across := Vector2(-out.y, out.x)
+		var root := out * 0.20
+		var elbow := out * (reach * 0.62) + across * 0.035
+		var tip := out * reach
+		draw_polyline(
+			PackedVector2Array([root * unit, elbow * unit, tip * unit]),
+			bone,
+			maxf(unit * 0.012, 2.5),
+			true
+		)
+		# A barb off each shaft, so the ring is spiked and not just spoked.
+		draw_line(
+			(elbow + across * 0.005) * unit,
+			(elbow + across * 0.048 - out * 0.015) * unit,
+			bone,
+			maxf(unit * 0.005, 1.5),
+			true
+		)
+		_draw_stalker_eye(tip * unit, unit, 0.030, iris, seed * 1.31)
 
-	draw_colored_polygon(_scaled(hunter_skull, unit), bone)
-	# Lit from beneath: the lower half of the mask is washed out, the brow is not.
+	# The hole. Drawn last of the head so nothing bleeds into it.
+	draw_circle(Vector2.ZERO, unit * 0.215, void_color)
+	draw_arc(Vector2.ZERO, unit * 0.225, 0.0, TAU, 28, bone, maxf(unit * 0.008, 2.0), true)
+
+	# Skull and beak, straight down the middle and out of the bottom of frame.
 	draw_colored_polygon(_scaled(PackedVector2Array([
-		Vector2(-0.13, 0.12), Vector2(0.13, 0.12),
-		Vector2(0.1, 0.46), Vector2(-0.1, 0.46),
+		Vector2(-0.082, 0.02), Vector2(0.082, 0.02),
+		Vector2(0.038, 0.30), Vector2(0.020, 0.62),
+		Vector2(-0.020, 0.62), Vector2(-0.038, 0.30),
+	]), unit), bone)
+	# One lit edge, raked by its own gaze from above.
+	draw_colored_polygon(_scaled(PackedVector2Array([
+		Vector2(-0.082, 0.02), Vector2(-0.024, 0.02),
+		Vector2(-0.010, 0.62), Vector2(-0.020, 0.62),
 	]), unit), bone_lit)
 	draw_polyline(_scaled(PackedVector2Array([
-		Vector2(-0.26, -0.32), Vector2(-0.05, -0.4),
-		Vector2(0.22, -0.3), Vector2(0.19, -0.02),
-		Vector2(0.12, 0.16), Vector2(0.1, 0.47),
-		Vector2(-0.1, 0.47), Vector2(-0.12, 0.16),
-		Vector2(-0.21, -0.02), Vector2(-0.26, -0.32),
-	]), unit), Color(0.09, 0.07, 0.055, 1.0), maxf(unit * 0.011, 3.0), true)
-
-	# Empty sockets, with one wet reflection of its own lantern in each. That
-	# glint is the only thing in the mask that is alive.
-	for side: float in [-1.0, 1.0]:
-		var socket_center := Vector2(side * 0.115, -0.13) * unit
-		draw_colored_polygon(_scaled(PackedVector2Array([
-			Vector2(side * 0.03, -0.23), Vector2(side * 0.21, -0.18),
-			Vector2(side * 0.2, -0.03), Vector2(side * 0.035, -0.05),
-		]), unit), void_color)
-		draw_circle(socket_center + Vector2(0.0, unit * 0.02), unit * 0.016, Color(ember.r, ember.g, ember.b, 0.7))
-
-	# Muzzle seam and the teeth along it.
-	draw_line(
-		Vector2(-0.085, 0.2) * unit,
-		Vector2(0.085, 0.2) * unit,
-		Color(0.05, 0.04, 0.03, 1.0),
-		maxf(unit * 0.01, 2.0),
-		true
-	)
-	_draw_teeth(unit, -0.075, 0.075, 0.205, true)
-	_draw_teeth(unit, -0.07, 0.07, 0.42, false)
-
-	# Breath in the lantern light.
-	for index: int in 6:
-		var drift := fposmod(elapsed * (0.4 + index * 0.09) + index * 0.37, 1.0)
-		var puff := Vector2(
-			(sin(elapsed * 1.7 + index * 2.1) * 0.16 + (index - 2.5) * 0.03) * unit,
-			(0.5 - drift * 0.55) * unit
+		Vector2(-0.082, 0.02), Vector2(-0.038, 0.30), Vector2(-0.020, 0.62),
+		Vector2(0.020, 0.62), Vector2(0.038, 0.30), Vector2(0.082, 0.02),
+	]), unit), Color(0.07, 0.055, 0.045, 1.0), maxf(unit * 0.009, 2.0), true)
+	# The mandible splitting away from it, wider the closer this gets.
+	var gape := 0.03 + sin(elapsed * 11.0) * 0.012
+	draw_polyline(_scaled(PackedVector2Array([
+		Vector2(-0.06, 0.12), Vector2(-0.05 - gape, 0.38), Vector2(-0.03 - gape, 0.66),
+	]), unit), bone, maxf(unit * 0.008, 2.0), true)
+	# Serrations cut into the beak's own edge rather than a row of teeth stuck
+	# onto it: this jaw is one piece of bone, and it is not a mouth.
+	for notch: int in 5:
+		var along := 0.14 + float(notch) * 0.095
+		var half := lerpf(0.062, 0.024, float(notch) / 4.0)
+		draw_line(
+			Vector2(-half, along) * unit,
+			Vector2(-half * 0.45, along + 0.028) * unit,
+			Color(0.06, 0.05, 0.04, 1.0),
+			maxf(unit * 0.006, 1.5),
+			true
 		)
-		draw_circle(puff, unit * (0.02 + drift * 0.05), Color(0.86, 0.72, 0.55, 0.06 * (1.0 - drift)))
+		draw_line(
+			Vector2(half, along) * unit,
+			Vector2(half * 0.45, along + 0.028) * unit,
+			Color(0.06, 0.05, 0.04, 1.0),
+			maxf(unit * 0.006, 1.5),
+			true
+		)
+
+	# The pair in roughly the place a face would put them, and then the ones
+	# that are not.
+	for side: float in [-1.0, 1.0]:
+		_draw_stalker_eye(Vector2(side * 0.155, 0.075) * unit, unit, 0.042, iris, side * 0.6)
+		_draw_stalker_eye(Vector2(side * 0.375, 0.335) * unit, unit, 0.034, iris, side * 2.2)
+		_draw_stalker_eye(Vector2(side * 0.545, 0.545) * unit, unit, 0.026, iris, side * 3.9)
+
+	# It is soaking, and it is close enough now that the run-off is in frame.
+	for index: int in 5:
+		var drift := fposmod(elapsed * (0.5 + index * 0.11) + index * 0.29, 1.0)
+		var origin := Vector2((index - 2) * 0.155, 0.10) * unit
+		var bead := origin + Vector2(0.0, drift * 0.55 * unit)
+		draw_line(origin, bead, Color(0.03, 0.026, 0.022, 0.5), maxf(unit * 0.004, 1.0), true)
+		draw_circle(bead, unit * 0.012 * (1.0 - drift * 0.6), Color(0.06, 0.055, 0.05, 0.8))
+
+
+## One of the creature's eyes: a wet dark ball, an iris that carries its own
+## light, and a pupil that is a hole. `offset` desynchronises the blink, because
+## a body covered in eyes that all blink together reads as decoration.
+func _draw_stalker_eye(
+	center: Vector2,
+	unit: float,
+	radius: float,
+	iris: Color,
+	offset: float
+) -> void:
+	# Open almost all the time: the blink is a tenth of the cycle, and `offset`
+	# means no two eyes are inside that tenth together.
+	var cycle := fposmod(elapsed * 0.7 + offset, 1.0)
+	var blink := 0.0 if cycle > 0.09 else sin(cycle / 0.09 * PI)
+	var open := 1.0 - blink * 0.92
+	var scaled_radius := unit * radius
+	draw_circle(center, scaled_radius, Color(0.045, 0.04, 0.035, 1.0))
+	if open <= 0.05:
+		return
+	draw_circle(center, scaled_radius * 0.52 * open, Color(iris.r, iris.g, iris.b, 0.82))
+	draw_circle(center, scaled_radius * 0.30 * open, Color(0.002, 0.002, 0.003, 1.0))
+	draw_circle(
+		center - Vector2(scaled_radius, scaled_radius) * 0.30,
+		scaled_radius * 0.14,
+		Color(0.85, 0.88, 0.95, 0.75)
+	)
 
 
 func _draw_burning_eye(center: Vector2, unit: float, color: Color) -> void:

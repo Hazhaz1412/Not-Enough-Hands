@@ -1,0 +1,51 @@
+[gd_scene load_steps=5 format=3]
+
+; DEVELOPMENT / MODEL INSPECTION SCENE - not gameplay, not a test fixture.
+; Run this scene (F6) to look at the Toilet Ghost model from a
+; first-person-height camera in near-darkness. Deliberately not wired to the
+; player, the toilet minigame, ghost AI, House2 or House3.
+
+[ext_resource type="PackedScene" uid="uid://dqfhv6dna0k34" path="res://assets/ghosts/toilet_ghost/toilet_ghost_model.glb" id="1_model"]
+
+[sub_resource type="Environment" id="Environment_dark"]
+background_mode = 1
+background_color = Color(0.02, 0.022, 0.03, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.35, 0.4, 0.55, 1)
+ambient_light_energy = 0.06
+tonemap_mode = 2
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_floor"]
+size = Vector2(4, 4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.05, 0.05, 0.06, 1)
+roughness = 0.95
+
+[node name="ToiletGhostModelDevScene" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_dark")
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_floor")
+
+[node name="ToiletGhostModel" parent="." instance=ExtResource("1_model")]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 1.495, -2)
+fov = 70.0
+
+[node name="Flashlight" type="SpotLight3D" parent="Camera3D"]
+light_energy = 3.5
+light_color = Color(1, 0.97, 0.92, 1)
+spot_range = 8.0
+spot_angle = 38.0
+spot_angle_attenuation = 0.8
+
+[node name="FillLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, 2.3, -1.1)
+light_energy = 0.6
+light_color = Color(0.62, 0.7, 0.95, 1)
+omni_range = 6.0

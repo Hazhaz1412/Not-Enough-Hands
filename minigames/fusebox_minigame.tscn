@@ -1,0 +1,122 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://minigames/fusebox_minigame.gd" id="1_script"]
+[ext_resource type="Script" path="res://minigames/fusebox_gauge.gd" id="2_gauge"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
+bg_color = Color(0.09, 0.085, 0.1, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.32, 0.28, 0.22, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_nerve_bg"]
+bg_color = Color(0.05, 0.045, 0.06, 0.9)
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_nerve_fill"]
+bg_color = Color(0.69, 0.55, 0.31, 0.95)
+
+[node name="FuseboxMinigame" type="CanvasLayer"]
+visible = false
+layer = 124
+process_mode = 3
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="BlackBackground" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.01, 0.01, 0.012, 0.92)
+
+[node name="CenterPanel" type="CenterContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Root/CenterPanel"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBox_panel")
+
+[node name="Margin" type="MarginContainer" parent="Root/CenterPanel/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 20
+
+[node name="Content" type="VBoxContainer" parent="Root/CenterPanel/Panel/Margin"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="NerveLabel" type="Label" parent="Root/CenterPanel/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.82, 0.72, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+text = "THẦN KINH: 100"
+
+[node name="NerveBar" type="ProgressBar" parent="Root/CenterPanel/Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 8)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleBox_nerve_bg")
+theme_override_styles/fill = SubResource("StyleBox_nerve_fill")
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="Gauge" type="Control" parent="Root/CenterPanel/Panel/Margin/Content"]
+custom_minimum_size = Vector2(380, 230)
+layout_mode = 2
+script = ExtResource("2_gauge")
+
+[node name="SlotsRow" type="HBoxContainer" parent="Root/CenterPanel/Panel/Margin/Content"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="Status" type="RichTextLabel" parent="Root/CenterPanel/Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+bbcode_enabled = true
+text = "[center]3 cầu chì cần lắp. Chờ kim vào vùng xanh.[/center]"
+fit_content = true
+scroll_active = false
+autowrap_mode = 3
+
+[node name="ShockFlash" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 0.96, 0.87, 0)
+
+[node name="ShockAudio" type="AudioStreamPlayer" parent="."]
+volume_db = -4.0
+
+[node name="SuccessAudio" type="AudioStreamPlayer" parent="."]
+volume_db = -4.0

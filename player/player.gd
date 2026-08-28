@@ -4,6 +4,7 @@ signal eyes_closed_changed(closed: bool)
 signal killed_by_ghost(ghost: Node3D)
 signal door_minigame_started(door: Node)
 signal door_minigame_finished()
+signal fusebox_minigame_started(fusebox: Node)
 signal hunter_trap_changed(trapped: bool)
 
 @export var walk_speed: float = 2.45
@@ -84,6 +85,7 @@ var hunter_trap_source: Node3D
 @onready var death_ui: CanvasLayer = $DeathUI
 @onready var footstep_players: Array[AudioStreamPlayer3D] = [$FootstepA, $FootstepB]
 @onready var door_minigame: CanvasLayer = get_node_or_null("DoorGhostMinigame") as CanvasLayer
+@onready var fusebox_minigame: CanvasLayer = get_node_or_null("FuseboxMinigame") as CanvasLayer
 
 var _minigame_ghost_safety_locks: int = 0
 var _minigame_ghost_release_remaining: float = 0.0
@@ -139,7 +141,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_mouse_capture()
 		get_viewport().set_input_as_handled()
 		return
-	if is_door_minigame_active():
+	if is_any_minigame_active():
 		return
 
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
@@ -207,7 +209,7 @@ func _try_interact() -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_minigame_ghost_safety(delta)
-	if is_door_minigame_active():
+	if is_any_minigame_active():
 		_open_eyes_for_minigame()
 		velocity = Vector3.ZERO
 		_stop_footsteps()
@@ -396,7 +398,7 @@ func kill_by_ghost(ghost: Node3D) -> void:
 func start_door_minigame(door: Node) -> bool:
 	if not is_alive \
 		or not door_minigame \
-		or is_door_minigame_active() \
+		or is_any_minigame_active() \
 		or not is_instance_valid(door):
 		return false
 	if not door.has_method("begin_exorcism") or not bool(door.call("begin_exorcism")):
@@ -412,6 +414,32 @@ func is_door_minigame_active() -> bool:
 	return door_minigame != null \
 		and door_minigame.has_method("is_running") \
 		and bool(door_minigame.call("is_running"))
+
+
+func start_fusebox_minigame(fusebox: Node) -> bool:
+	if not is_alive \
+		or not fusebox_minigame \
+		or is_any_minigame_active() \
+		or not is_instance_valid(fusebox):
+		return false
+	if not fusebox_minigame.has_method("start") or not bool(fusebox_minigame.call("start", self, fusebox)):
+		return false
+	fusebox_minigame_started.emit(fusebox)
+	return true
+
+
+func is_fusebox_minigame_active() -> bool:
+	return fusebox_minigame != null \
+		and fusebox_minigame.has_method("is_running") \
+		and bool(fusebox_minigame.call("is_running"))
+
+
+## Shared "freeze movement/look, don't fight the minigame for input" gate.
+## The fusebox minigame deliberately never calls acquire_minigame_ghost_safety
+## - a miss there is meant to be heard - so ghost suspension stays keyed off
+## the door minigame alone; this only covers input/movement ownership.
+func is_any_minigame_active() -> bool:
+	return is_door_minigame_active() or is_fusebox_minigame_active()
 
 
 func acquire_minigame_ghost_safety() -> void:

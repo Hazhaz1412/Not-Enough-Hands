@@ -1,0 +1,329 @@
+[gd_scene format=3 uid="uid://cdjw8ogv0ga01"]
+
+[ext_resource type="Script" uid="uid://dueips1rxbrnm" path="res://tests/debug_room.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://player/player.tscn" id="2_player"]
+[ext_resource type="Script" uid="uid://d3dtpcwe6oum" path="res://door/door_attack_director.gd" id="3_director"]
+[ext_resource type="PackedScene" path="res://door/defense_door.tscn" id="4_defense_door"]
+[ext_resource type="PackedScene" path="res://door/door.tscn" id="5_door"]
+[ext_resource type="PackedScene" path="res://power/fusebox.tscn" id="6_fusebox"]
+[ext_resource type="Script" uid="uid://d0iyxxqhm2veh" path="res://power/power_manager.gd" id="7_power_manager"]
+[ext_resource type="Script" uid="uid://b8fgvr6qygsi3" path="res://power/electrical_device.gd" id="8_electrical_device"]
+[ext_resource type="PackedScene" path="res://ghosts/statue_ghost.tscn" id="9_statue"]
+[ext_resource type="PackedScene" path="res://ghosts/crawler_ghost.tscn" id="10_crawler"]
+[ext_resource type="PackedScene" path="res://ghosts/hunter_ghost.tscn" id="11_hunter"]
+[ext_resource type="PackedScene" path="res://ui/dev_tools.tscn" id="12_dev_tools"]
+[ext_resource type="Script" uid="uid://ckn40ad61nx2t" path="res://ui/stamina_bar.gd" id="13_stamina_bar"]
+[ext_resource type="Script" uid="uid://dugs30clyjof8" path="res://ui/interaction_prompt.gd" id="14_interaction_prompt"]
+[ext_resource type="PackedScene" path="res://props/light_source.tscn" id="15_light_source"]
+[ext_resource type="PackedScene" path="res://props/light_switch.tscn" id="16_light_switch"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+
+[sub_resource type="Sky" id="Sky_env"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_room"]
+background_mode = 2
+sky = SubResource("Sky_env")
+ambient_light_source = 3
+ambient_light_color = Color(0.62, 0.66, 0.72, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+
+[sub_resource type="BoxMesh" id="BoxMesh_Floor"]
+size = Vector3(16, 0.2, 14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_plaster"]
+albedo_color = Color(0.72, 0.7, 0.65, 1)
+roughness = 0.85
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_Floor"]
+size = Vector3(16, 0.2, 14)
+
+[sub_resource type="BoxMesh" id="BoxMesh_WallNS"]
+size = Vector3(16, 3.2, 0.2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_WallNS"]
+size = Vector3(16, 3.2, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_WallEW"]
+size = Vector3(0.2, 3.2, 14)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_WallEW"]
+size = Vector3(0.2, 3.2, 14)
+
+[sub_resource type="BoxMesh" id="BoxMesh_WallSegment"]
+size = Vector3(6.5, 3.2, 0.2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_WallSegment"]
+size = Vector3(6.5, 3.2, 0.2)
+
+[node name="DebugRoom" type="Node3D" unique_id=209571856]
+script = ExtResource("1_script")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1236005065]
+environment = SubResource("Environment_room")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1394650284]
+transform = Transform3D(0.81915206, 0.46984634, -0.32898995, 0, 0.57357645, 0.81915206, 0.57357645, -0.6710101, 0.46984634, 0, 4, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+shadow_enabled = true
+
+[node name="Room" type="Node3D" parent="." unique_id=179641688]
+
+[node name="Floor" type="StaticBody3D" parent="Room" unique_id=722617999]
+
+[node name="Mesh" type="MeshInstance3D" parent="Room/Floor" unique_id=340430122]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+mesh = SubResource("BoxMesh_Floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_plaster")
+
+[node name="Collision" type="CollisionShape3D" parent="Room/Floor" unique_id=1737367195]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+shape = SubResource("BoxShape3D_Floor")
+
+[node name="Ceiling" type="StaticBody3D" parent="Room" unique_id=1718713019]
+
+[node name="Mesh" type="MeshInstance3D" parent="Room/Ceiling" unique_id=1412787836]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.3, 0)
+mesh = SubResource("BoxMesh_Floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_plaster")
+
+[node name="Collision" type="CollisionShape3D" parent="Room/Ceiling" unique_id=919245225]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.3, 0)
+shape = SubResource("BoxShape3D_Floor")
+
+[node name="WallSouth" type="StaticBody3D" parent="Room" unique_id=1270422289]
+
+[node name="Mesh" type="MeshInstance3D" parent="Room/WallSouth" unique_id=1841073282]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, -7)
+mesh = SubResource("BoxMesh_WallNS")
+surface_material_override/0 = SubResource("StandardMaterial3D_plaster")
+
+[node name="Collision" type="CollisionShape3D" parent="Room/WallSouth" unique_id=1673941058]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, -7)
+shape = SubResource("BoxShape3D_WallNS")
+
+[node name="WallEast" type="StaticBody3D" parent="Room" unique_id=907877983]
+
+[node name="Mesh" type="MeshInstance3D" parent="Room/WallEast" unique_id=1031247968]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 1.6, 0)
+mesh = SubResource("BoxMesh_WallEW")
+surface_material_override/0 = SubResource("StandardMaterial3D_plaster")
+
+[node name="Collision" type="CollisionShape3D" parent="Room/WallEast" unique_id=1462121618]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 1.6, 0)
+shape = SubResource("BoxShape3D_WallEW")
+
+[node name="LightSource" parent="Room/WallEast" unique_id=1010446647 instance=ExtResource("15_light_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.229112, 3.103689, -3.880528)
+directly_toggleable = false
+switch_id = &"1"
+
+[node name="LightSource2" parent="Room/WallEast" unique_id=1305680633 instance=ExtResource("15_light_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.17941248, 3.103689, -3.880528)
+directly_toggleable = false
+switch_id = &"1"
+
+[node name="LightSource6" parent="Room/WallEast" unique_id=1066259934 instance=ExtResource("15_light_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.1379156, 3.103689, -3.880528)
+directly_toggleable = false
+switch_id = &"1"
+
+[node name="LightSource3" parent="Room/WallEast" unique_id=1509288527 instance=ExtResource("15_light_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.17941248, 3.103689, 2.512314)
+directly_toggleable = false
+switch_id = &"1"
+
+[node name="LightSource5" parent="Room/WallEast" unique_id=1105920766 instance=ExtResource("15_light_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.0560617, 3.103689, 2.512314)
+directly_toggleable = false
+switch_id = &"1"
+
+[node name="LightSource4" parent="Room/WallEast" unique_id=1673340610 instance=ExtResource("15_light_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.3573346, 3.103689, 2.512314)
+directly_toggleable = false
+switch_id = &"1"
+
+[node name="WallWest" type="StaticBody3D" parent="Room" unique_id=1829750385]
+
+[node name="Mesh" type="MeshInstance3D" parent="Room/WallWest" unique_id=411827158]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1.6, 0)
+mesh = SubResource("BoxMesh_WallEW")
+surface_material_override/0 = SubResource("StandardMaterial3D_plaster")
+
+[node name="Collision" type="CollisionShape3D" parent="Room/WallWest" unique_id=457937503]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1.6, 0)
+shape = SubResource("BoxShape3D_WallEW")
+
+[node name="WallNorthLeft" type="StaticBody3D" parent="Room" unique_id=150069809]
+
+[node name="Mesh" type="MeshInstance3D" parent="Room/WallNorthLeft" unique_id=358119168]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.75, 1.6, 7)
+mesh = SubResource("BoxMesh_WallSegment")
+surface_material_override/0 = SubResource("StandardMaterial3D_plaster")
+
+[node name="Collision" type="CollisionShape3D" parent="Room/WallNorthLeft" unique_id=590510528]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.75, 1.6, 7)
+shape = SubResource("BoxShape3D_WallSegment")
+
+[node name="WallNorthRight" type="StaticBody3D" parent="Room" unique_id=344821186]
+
+[node name="Mesh" type="MeshInstance3D" parent="Room/WallNorthRight" unique_id=714207933]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.75, 1.6, 7)
+mesh = SubResource("BoxMesh_WallSegment")
+surface_material_override/0 = SubResource("StandardMaterial3D_plaster")
+
+[node name="Collision" type="CollisionShape3D" parent="Room/WallNorthRight" unique_id=1127135201]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.75, 1.6, 7)
+shape = SubResource("BoxShape3D_WallSegment")
+
+[node name="DoorAttackDirector" type="Node" parent="." unique_id=1946854803]
+script = ExtResource("3_director")
+
+[node name="Entrances" type="Node3D" parent="." unique_id=1682583116]
+
+[node name="Entrance01" parent="Entrances" unique_id=987766716 instance=ExtResource("4_defense_door")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 7)
+
+[node name="TestDoor" parent="." unique_id=1190174780 instance=ExtResource("5_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 1)
+
+[node name="Fusebox" parent="." unique_id=169031932 instance=ExtResource("6_fusebox")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 7.938987, 1.2008837, -3.9987626)
+
+[node name="LightDemo" type="Node3D" parent="." unique_id=1275666085]
+
+[node name="TestLamp" parent="LightDemo" unique_id=1290848426 instance=ExtResource("15_light_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5274334, 0.9, 0.26367462)
+
+[node name="LightSwitch" parent="LightDemo" unique_id=1488740243 instance=ExtResource("16_light_switch")]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 7.8814864, 1.0785186, -2.8023512)
+targets = Array[StringName]([&"1"])
+
+[node name="Power" type="Node" parent="." unique_id=1974217311]
+
+[node name="PowerManager" type="Node" parent="Power" unique_id=1743841945]
+script = ExtResource("7_power_manager")
+max_power = 150.0
+current_power = 150.0
+
+[node name="TestLoad" type="Node" parent="Power" unique_id=1760547356]
+script = ExtResource("8_electrical_device")
+power_consumption = 5.0
+
+[node name="Player" parent="." unique_id=1983644271 instance=ExtResource("2_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 3)
+
+[node name="StatueGhost" parent="." unique_id=489150183 instance=ExtResource("9_statue")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0.08, -5)
+night_aggression = 0.15
+
+[node name="CrawlerGhost" parent="." unique_id=219792221 instance=ExtResource("10_crawler")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 3, -5)
+
+[node name="CrawlerRoute" type="Node3D" parent="." unique_id=660266946]
+
+[node name="Lair" type="Marker3D" parent="CrawlerRoute" unique_id=923964873 groups=["crawler_lair"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 3, -5)
+
+[node name="Patrol01" type="Marker3D" parent="CrawlerRoute" unique_id=988532997 groups=["crawler_patrol_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 3, -5)
+
+[node name="Patrol02" type="Marker3D" parent="CrawlerRoute" unique_id=1594428577 groups=["crawler_patrol_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 3, -5)
+
+[node name="Patrol03" type="Marker3D" parent="CrawlerRoute" unique_id=147939806 groups=["crawler_patrol_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 3, 5)
+
+[node name="Patrol04" type="Marker3D" parent="CrawlerRoute" unique_id=238684650 groups=["crawler_patrol_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 3, 5)
+
+[node name="Patrol05" type="Marker3D" parent="CrawlerRoute" unique_id=199127171 groups=["crawler_patrol_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+
+[node name="HunterGhost" parent="." unique_id=2083080665 instance=ExtResource("11_hunter")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 5)
+
+[node name="HunterRoute" type="Node3D" parent="." unique_id=741726491]
+
+[node name="Sweep01" type="Marker3D" parent="HunterRoute" unique_id=192006128 groups=["hunter_sweep_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+
+[node name="Sweep02" type="Marker3D" parent="HunterRoute" unique_id=1532326820 groups=["hunter_sweep_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0.4, -5)
+
+[node name="Sweep03" type="Marker3D" parent="HunterRoute" unique_id=1301190921 groups=["hunter_sweep_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0.4, -5)
+
+[node name="Sweep04" type="Marker3D" parent="HunterRoute" unique_id=2101065562 groups=["hunter_sweep_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0.4, 5)
+
+[node name="Sweep05" type="Marker3D" parent="HunterRoute" unique_id=2126716124 groups=["hunter_sweep_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0.4, 5)
+
+[node name="DevTools" parent="." unique_id=104850456 instance=ExtResource("12_dev_tools")]
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1453703558]
+
+[node name="DebugHint" type="RichTextLabel" parent="CanvasLayer" unique_id=976496998]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 340.0
+offset_bottom = 60.0
+mouse_filter = 2
+bbcode_enabled = true
+text = "[color=#b2cccc]F1[/color] Bảng dev — có nút Ngắt điện ngay"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="CanvasLayer" unique_id=2090276186]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 40
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/MarginContainer" unique_id=411930423]
+layout_mode = 2
+
+[node name="Label" type="RichTextLabel" parent="CanvasLayer/MarginContainer/VBoxContainer" unique_id=382602288]
+layout_mode = 2
+bbcode_enabled = true
+text = "[center][b][color=#b2cccc]THỂ LỰC[/color][/b][/center]"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="StaminaBar" type="ProgressBar" parent="CanvasLayer/MarginContainer/VBoxContainer" unique_id=1205879231]
+custom_minimum_size = Vector2(250, 10)
+layout_mode = 2
+show_percentage = false
+script = ExtResource("13_stamina_bar")
+player_path = NodePath("../../../../Player")
+
+[node name="InteractionPrompt" type="CenterContainer" parent="CanvasLayer" unique_id=2092304845]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+mouse_filter = 2
+script = ExtResource("14_interaction_prompt")
+player_path = NodePath("../../Player")
+
+[node name="RichTextLabel" type="RichTextLabel" parent="CanvasLayer/InteractionPrompt" unique_id=1625294772]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+bbcode_enabled = true
+text = "[center]Tương tác [E][/center]"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0

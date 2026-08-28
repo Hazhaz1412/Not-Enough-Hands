@@ -10,6 +10,10 @@ signal panel_toggled(open: bool)
 @export var door_director_path: NodePath = NodePath("../DoorAttackDirector")
 @export var world_environment_path: NodePath = NodePath("../WorldEnvironment")
 
+## Power isn't present in every scene DevTools runs in (main.tscn has none
+## yet), so this is looked up by group at call time instead of an export
+## path - same reasoning as ElectricalDevice/Fusebox finding PowerManager.
+
 ## Colour of the through-wall entrance markers. Bright enough to read against
 ## the horror grade, transparent enough not to hide the door behind it.
 const XRAY_TINT := Color(0.15, 1.0, 0.72, 0.85)
@@ -43,6 +47,7 @@ func _ready() -> void:
 	$Panel/Margin/Content/SpawnCrawler.pressed.connect(spawn_crawler)
 	$Panel/Margin/Content/SpawnHunter.pressed.connect(spawn_hunter)
 	$Panel/Margin/Content/DoorRow/AttackDoor.pressed.connect(force_selected_door_attack)
+	$Panel/Margin/Content/ForceBlackout.pressed.connect(force_blackout)
 	$Panel/Margin/Content/Close.pressed.connect(func() -> void: set_panel_open(false))
 	set_panel_open(false)
 
@@ -282,6 +287,22 @@ func force_selected_door_attack() -> bool:
 		else "Không thể tấn công cửa %02d (cửa có thể đã vỡ)." % entrance_id
 	)
 	return started
+
+
+## Zeroes current_power and leaves PowerManager's own _process() to raise the
+## real blackout signal/state on the next frame, rather than poking
+## is_blackout directly and risking it disagreeing with current_power.
+func force_blackout() -> bool:
+	var power_manager := get_tree().get_first_node_in_group("power_manager")
+	if not power_manager:
+		status_label.text = "Không có PowerManager trong scene này."
+		return false
+	if bool(power_manager.get("is_blackout")):
+		status_label.text = "Đã mất điện rồi."
+		return false
+	power_manager.set("current_power", 0.0)
+	status_label.text = "Đã ngắt điện (dev)."
+	return true
 
 
 func _player() -> Node:

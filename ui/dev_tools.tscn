@@ -25,7 +25,7 @@ script = ExtResource("1_script")
 offset_left = 20.0
 offset_top = 20.0
 offset_right = 420.0
-offset_bottom = 700.0
+offset_bottom = 760.0
 theme_override_styles/panel = SubResource("StyleBox_panel")
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
@@ -108,6 +108,11 @@ custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
 text = "TẤN CÔNG NGAY"
+
+[node name="ForceBlackout" type="Button" parent="Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "NGẮT ĐIỆN NGAY"
 
 [node name="Status" type="Label" parent="Panel/Margin/Content"]
 custom_minimum_size = Vector2(0, 58)

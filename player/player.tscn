@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://ui/death_screen.gd" id="7_death_screen"]
 [ext_resource type="Script" path="res://ui/death_visage.gd" id="8_death_visage"]
 [ext_resource type="Script" path="res://ui/stamina_bar.gd" id="9_stamina_bar"]
+[ext_resource type="PackedScene" path="res://minigames/fusebox_minigame.tscn" id="10_fusebox_minigame"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 
@@ -329,6 +330,8 @@ mouse_filter = 2
 color = Color(1, 1, 1, 1)
 
 [node name="DoorGhostMinigame" parent="." instance=ExtResource("6_door_minigame")]
+
+[node name="FuseboxMinigame" parent="." instance=ExtResource("10_fusebox_minigame")]
 
 [node name="DeathUI" type="CanvasLayer" parent="."]
 visible = false

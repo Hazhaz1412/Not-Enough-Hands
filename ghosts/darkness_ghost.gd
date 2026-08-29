@@ -58,6 +58,9 @@ var _unstick_seconds_left := 0.0
 
 func _ready() -> void:
 	super._ready()
+	# The shared WomanGhost scene only knows its reusable base group. Death UI
+	# and other presentation systems need the gameplay identity explicitly.
+	add_to_group("darkness_ghosts")
 	_power_effect = get_node_or_null("DarknessEntityPowerEffect") as DarknessEntityPowerEffect
 	# NavigationAgent3D has avoidance_enabled = true in the scene, but avoidance
 	# only takes effect once we feed it a desired velocity via set_velocity()

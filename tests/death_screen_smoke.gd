@@ -67,8 +67,36 @@ func _run() -> void:
 		_fail("The crawler death did not receive crawler-specific presentation.")
 		return
 
+	# Hunter and Darkness have distinct portraits, timing/audio routes and copy.
+	# The second player is already dead, so exercise the presentation routing
+	# directly rather than attempting another gameplay kill on it.
+	var hunter := current_scene.get_node("HunterKiller") as Node3D
+	var darkness := current_scene.get_node("DarknessKiller") as Node3D
+	if crawler_death_ui.call("_identify_killer", hunter) != &"hunter":
+		_fail("The Hunter was not routed to its remade jumpscare variant.")
+		return
+	if crawler_death_ui.call("_identify_killer", darkness) != &"darkness":
+		_fail("The Darkness Ghost was not routed to its own jumpscare variant.")
+		return
+	crawler_death_ui.set("killer_variant", &"darkness")
+	crawler_death_ui.call("_configure_copy")
+	if "MA BÓNG TỐI" not in crawler_cause.text:
+		_fail("The Darkness Ghost did not receive darkness-specific Game Over copy.")
+		return
+	var visage := crawler_death_ui.get_node("Visage") as Control
+	visage.call("configure", &"hunter")
+	visage.call("set_scare_progress", 0.75)
+	if visage.get("killer_variant") != &"hunter":
+		_fail("The remade Hunter portrait could not be configured.")
+		return
+	visage.call("configure", &"darkness")
+	visage.call("set_scare_progress", 0.75)
+	if visage.get("killer_variant") != &"darkness":
+		_fail("The Darkness Ghost portrait could not be configured.")
+		return
+
 	paused = false
-	print("Death screen smoke test passed: jumpscare, killer variants, Game Over, and full scene reset.")
+	print("Death screen smoke test passed: all killer jumpscares, Game Over, and full scene reset.")
 	current_scene.queue_free()
 	await process_frame
 	quit()

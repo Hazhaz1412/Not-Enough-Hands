@@ -13,6 +13,7 @@
 [ext_resource type="PackedScene" path="res://ui/night_clock.tscn" id="9_night_clock"]
 [ext_resource type="PackedScene" path="res://ui/dev_tools.tscn" id="10_dev_tools"]
 [ext_resource type="PackedScene" path="res://ghosts/hunter_ghost.tscn" id="11_hunter"]
+[ext_resource type="PackedScene" path="res://ghosts/darkness_ghost.tscn" id="12_darkness"]
 [ext_resource type="PackedScene" uid="uid://cxt4685iw2ycn" path="res://assets/map/Furniture/FBX/Separated/Modern Shelves.fbx" id="18_vhc4g"]
 [ext_resource type="PackedScene" uid="uid://xe2d0sujom5s" path="res://assets/map/Furniture/FBX/Separated/Washing Machine.fbx" id="19_p1pwr"]
 [ext_resource type="PackedScene" uid="uid://cbqliwcjwtqi5" path="res://assets/map/Furniture/FBX/Separated/Sink.fbx" id="21_4p7f4"]
@@ -79331,6 +79332,8 @@ patrol_point_timeout = 26.0
 
 [node name="HunterGhost" parent="." unique_id=149705737 instance=ExtResource("11_hunter")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, -12)
+
+[node name="DarknessGhost" parent="." instance=ExtResource("12_darkness")]
 
 [node name="TotemRitual" type="Node" parent="."]
 script = ExtResource("82_totem_ritual")

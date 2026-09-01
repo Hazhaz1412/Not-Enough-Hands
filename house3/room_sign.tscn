@@ -1,0 +1,66 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://house3/room_sign.gd" id="1_sign"]
+
+[sub_resource type="StandardMaterial3D" id="Material_frame"]
+albedo_color = Color(0.24, 0.075, 0.025, 1)
+metallic_specular = 0.2
+roughness = 0.62
+
+[sub_resource type="BoxMesh" id="Mesh_frame"]
+material = SubResource("Material_frame")
+size = Vector3(1.55, 0.38, 0.07)
+
+[sub_resource type="StandardMaterial3D" id="Material_face"]
+albedo_color = Color(0.48, 0.16, 0.045, 1)
+metallic_specular = 0.28
+roughness = 0.54
+
+[sub_resource type="BoxMesh" id="Mesh_face"]
+material = SubResource("Material_face")
+size = Vector3(1.39, 0.27, 0.082)
+
+[sub_resource type="StandardMaterial3D" id="Material_screw"]
+albedo_color = Color(0.72, 0.73, 0.7, 1)
+metallic = 0.78
+roughness = 0.3
+
+[sub_resource type="SphereMesh" id="Mesh_screw"]
+material = SubResource("Material_screw")
+radius = 0.027
+height = 0.054
+
+[node name="RoomSign" type="Node3D"]
+script = ExtResource("1_sign")
+
+[node name="WoodFrame" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_frame")
+
+[node name="WoodFace" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_face")
+
+[node name="FrontLabel" type="Label3D" parent="."]
+position = Vector3(0, -0.005, 0.047)
+modulate = Color(0.97, 0.92, 0.8, 1)
+outline_modulate = Color(0.08, 0.025, 0.01, 1)
+font_size = 48
+outline_size = 8
+text = "TÊN PHÒNG"
+horizontal_alignment = 1
+
+[node name="BackLabel" type="Label3D" parent="."]
+transform = Transform3D(-1, 0, 8.74228e-08, 0, 1, 0, -8.74228e-08, 0, -1, 0, -0.005, -0.047)
+modulate = Color(0.97, 0.92, 0.8, 1)
+outline_modulate = Color(0.08, 0.025, 0.01, 1)
+font_size = 48
+outline_size = 8
+text = "TÊN PHÒNG"
+horizontal_alignment = 1
+
+[node name="ScrewLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.675, 0, 0.058)
+mesh = SubResource("Mesh_screw")
+
+[node name="ScrewRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.675, 0, 0.058)
+mesh = SubResource("Mesh_screw")

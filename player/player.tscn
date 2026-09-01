@@ -14,7 +14,9 @@
 [ext_resource type="Script" path="res://ui/equipment_slot.gd" id="12_equipment_slot"]
 [ext_resource type="Script" path="res://player/player_bladder.gd" id="13_player_bladder"]
 [ext_resource type="Script" path="res://ui/bladder_bar.gd" id="15_bladder_bar"]
-[ext_resource type="PackedScene" path="res://minigames/fusebox_minigame.tscn" id="16_fusebox_minigame"]
+[ext_resource type="PackedScene" path="res://player/player_visual.tscn" id="16_player_visual"]
+[ext_resource type="Script" path="res://ui/downed_indicators.gd" id="17_downed_indicators"]
+[ext_resource type="Script" path="res://jumpscare/jumpscare_controller.gd" id="18_jumpscare"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 
@@ -188,6 +190,8 @@ script = ExtResource("1_script")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1709885884]
 shape = SubResource("CapsuleShape3D_player")
 
+[node name="PlayerVisual" parent="." instance=ExtResource("16_player_visual")]
+
 [node name="Equipment" type="Node" parent="."]
 script = ExtResource("10_player_equipment")
 
@@ -200,16 +204,18 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
 [node name="Camera3D" type="Camera3D" parent="CameraPivot" unique_id=663310931]
 current = true
 fov = 70.0
+near = 0.02
 far = 45.0
 
 [node name="Flashlight" type="SpotLight3D" parent="CameraPivot/Camera3D"]
-light_color = Color(0.56, 0.67, 0.78, 1)
-light_energy = 1.75
-light_volumetric_fog_energy = 1.5
+light_color = Color(0.82, 0.86, 0.9, 1)
+light_energy = 2.1
+light_volumetric_fog_energy = 0.6
 shadow_enabled = true
-spot_range = 14.0
-spot_angle = 30.0
-spot_angle_attenuation = 2.2
+spot_range = 13.0
+spot_angle = 28.0
+spot_angle_attenuation = 2.0
+spot_attenuation = 1.2
 
 [node name="InteractRay" type="RayCast3D" parent="CameraPivot/Camera3D" unique_id=1694598043]
 target_position = Vector3(0, 0, -2.5)
@@ -481,9 +487,24 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(1, 1, 1, 1)
 
+[node name="DownedUI" type="CanvasLayer" parent="."]
+layer = 110
+
+[node name="Indicators" type="Control" parent="DownedUI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("17_downed_indicators")
+player_path = NodePath("../..")
+
 [node name="DoorGhostMinigame" parent="." instance=ExtResource("6_door_minigame")]
 
-[node name="FuseboxMinigame" parent="." instance=ExtResource("16_fusebox_minigame")]
+[node name="Jumpscare" type="Node" parent="."]
+process_mode = 3
+script = ExtResource("18_jumpscare")
 
 [node name="DeathUI" type="CanvasLayer" parent="."]
 visible = false

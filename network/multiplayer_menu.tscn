@@ -1,0 +1,160 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://network/multiplayer_menu.gd" id="1_menu"]
+
+[sub_resource type="StyleBoxFlat" id="StylePanel"]
+bg_color = Color(0.018, 0.025, 0.032, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.36, 0.4, 0.75)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 24
+
+[sub_resource type="StyleBoxFlat" id="StyleButton"]
+bg_color = Color(0.09, 0.28, 0.31, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="MultiplayerMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.005, 0.008, 0.012, 1)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StylePanel")
+
+[node name="Margin" type="MarginContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 38
+theme_override_constants/margin_top = 34
+theme_override_constants/margin_right = 38
+theme_override_constants/margin_bottom = 36
+
+[node name="Content" type="VBoxContainer" parent="Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.9, 0.9, 1)
+theme_override_font_sizes/font_size = 34
+text = "NOT ENOUGH HANDS"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.6, 0.62, 1)
+text = "MULTIPLAYER · LOCAL DEVELOPMENT"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="Center/Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 8)
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+text = "TÊN HIỂN THỊ"
+
+[node name="NameEdit" type="LineEdit" parent="Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+max_length = 24
+placeholder_text = "Player"
+
+[node name="AddressRow" type="HBoxContainer" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="AddressColumn" type="VBoxContainer" parent="Center/Panel/Margin/Content/AddressRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Label" type="Label" parent="Center/Panel/Margin/Content/AddressRow/AddressColumn"]
+layout_mode = 2
+text = "ĐỊA CHỈ SERVER"
+
+[node name="AddressEdit" type="LineEdit" parent="Center/Panel/Margin/Content/AddressRow/AddressColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "127.0.0.1"
+
+[node name="PortColumn" type="VBoxContainer" parent="Center/Panel/Margin/Content/AddressRow"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Center/Panel/Margin/Content/AddressRow/PortColumn"]
+layout_mode = 2
+text = "UDP PORT"
+
+[node name="PortSpin" type="SpinBox" parent="Center/Panel/Margin/Content/AddressRow/PortColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+min_value = 1024.0
+max_value = 65535.0
+value = 7777.0
+allow_greater = false
+allow_lesser = false
+
+[node name="Buttons" type="HBoxContainer" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HostButton" type="Button" parent="Center/Panel/Margin/Content/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleButton")
+text = "TẠO PHÒNG LOCAL"
+
+[node name="JoinButton" type="Button" parent="Center/Panel/Margin/Content/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleButton")
+text = "VÀO PHÒNG"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.72, 0.73, 1)
+text = "Tạo server trên máy này hoặc kết nối 127.0.0.1 để test hai client."
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2

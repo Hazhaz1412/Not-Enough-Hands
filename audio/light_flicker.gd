@@ -109,7 +109,7 @@ func _begin_random_flicker() -> void:
 func _choose_light_near_player() -> Light3D:
 	var valid_lights: Array[Light3D] = []
 	for light: Light3D in _lights:
-		if is_instance_valid(light):
+		if is_instance_valid(light) and light.visible:
 			valid_lights.append(light)
 	if valid_lights.is_empty():
 		return null

@@ -1,0 +1,144 @@
+[gd_scene format=3 uid="uid://b674ibaxc2a4u"]
+
+[ext_resource type="PackedScene" uid="uid://c5cix15gsmhgu" path="res://assets/electrical_devices/light_switch_2.glb" id="1_lgx06"]
+[ext_resource type="PackedScene" path="res://player/player.tscn" id="1_player"]
+[ext_resource type="Script" uid="uid://d0iyxxqhm2veh" path="res://power/power_manager.gd" id="3_power_manager"]
+[ext_resource type="Script" uid="uid://b8fgvr6qygsi3" path="res://power/electrical_device.gd" id="4_device"]
+[ext_resource type="Script" uid="uid://c7nblg6wiw374" path="res://switches/light_switch.gd" id="4_lgx06"]
+
+[sub_resource type="Environment" id="Environment_demo"]
+background_mode = 1
+background_color = Color(0.025, 0.03, 0.04, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.16, 0.19, 0.24, 1)
+ambient_light_energy = 0.35
+
+[sub_resource type="StandardMaterial3D" id="Material_floor"]
+albedo_color = Color(0.16, 0.17, 0.19, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_floor"]
+material = SubResource("Material_floor")
+size = Vector3(7, 0.2, 7)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(7, 0.2, 7)
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.32, 0.29, 0.25, 1)
+roughness = 0.95
+
+[sub_resource type="BoxMesh" id="Mesh_wall"]
+material = SubResource("Material_wall")
+size = Vector3(7, 3.5, 0.2)
+
+[sub_resource type="BoxShape3D" id="Shape_wall"]
+size = Vector3(7, 3.5, 0.2)
+
+[sub_resource type="SphereMesh" id="Mesh_bulb"]
+radius = 0.09
+height = 0.18
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_re3s8"]
+
+[node name="LightSwitchDemo" type="Node3D" unique_id=561638330]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=645369216]
+environment = SubResource("Environment_demo")
+
+[node name="PowerManager" type="Node" parent="." unique_id=2006592944]
+script = ExtResource("3_power_manager")
+enable_power_drain = false
+auto_register_house_lights = false
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=1899790564]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 1.5)
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=1545872370]
+mesh = SubResource("Mesh_floor")
+
+[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=841575916]
+shape = SubResource("Shape_floor")
+
+[node name="SwitchWall" type="StaticBody3D" parent="." unique_id=718101847]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="SwitchWall" unique_id=1784855932]
+mesh = SubResource("Mesh_wall")
+
+[node name="Collision" type="CollisionShape3D" parent="SwitchWall" unique_id=80862160]
+shape = SubResource("Shape_wall")
+
+[node name="DemoLamp" type="OmniLight3D" parent="." unique_id=54446418]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.491255, 2.45, 1.6)
+light_color = Color(1, 0.76, 0.48, 1)
+light_energy = 3.5
+shadow_enabled = true
+
+[node name="Bulb" type="MeshInstance3D" parent="DemoLamp" unique_id=1163867633]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.4469764, 0)
+mesh = SubResource("Mesh_bulb")
+
+[node name="ElectricalDevice" type="Node" parent="DemoLamp" unique_id=1963532716 node_paths=PackedStringArray("powered_light")]
+script = ExtResource("4_device")
+device_id = &"DEMO_LIGHT"
+power_consumption = 60.0
+powered_light = NodePath("..")
+
+[node name="DemoLamp2" type="OmniLight3D" parent="." unique_id=2080135402]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.7303927, 2.45, 1.6)
+light_color = Color(1, 0.76, 0.48, 1)
+light_energy = 3.5
+shadow_enabled = true
+
+[node name="Bulb" type="MeshInstance3D" parent="DemoLamp2" unique_id=524895310]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.4469764, 0)
+mesh = SubResource("Mesh_bulb")
+
+[node name="ElectricalDevice" type="Node" parent="DemoLamp2" unique_id=379492643 node_paths=PackedStringArray("powered_light")]
+script = ExtResource("4_device")
+device_id = &"DEMO_LIGHT_2"
+power_consumption = 60.0
+powered_light = NodePath("..")
+
+[node name="Player" parent="." unique_id=425074377 instance=ExtResource("1_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2.25)
+
+[node name="Instructions" type="CanvasLayer" parent="." unique_id=1668952222]
+
+[node name="Label" type="Label" parent="Instructions" unique_id=1084296717]
+offset_left = 24.0
+offset_top = 20.0
+offset_right = 660.0
+offset_bottom = 80.0
+theme_override_colors/font_color = Color(0.9, 0.92, 0.94, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 20
+text = "LIGHT SWITCH DEMO
+Nhìn vào công tắc và nhấn E để bật/tắt đèn"
+
+[node name="LightSwitch2" type="StaticBody3D" parent="." unique_id=2025985483]
+collision_layer = 3
+script = ExtResource("4_lgx06")
+controlled_device_id = &"DEMO_LIGHT"
+
+[node name="Sketchfab_Scene" parent="LightSwitch2" unique_id=576451570 instance=ExtResource("1_lgx06")]
+transform = Transform3D(-0.021035716, 0, -0.9997787, 0, 1, 0, 0.9997787, 0, -0.021035716, 0, 0.91480595, 0.102322415)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LightSwitch2" unique_id=2032806509]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.87135744, 0)
+shape = SubResource("BoxShape3D_re3s8")
+
+[node name="LightSwitch3" type="StaticBody3D" parent="." unique_id=223094762]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.1693385, 0, 0)
+collision_layer = 3
+script = ExtResource("4_lgx06")
+controlled_device_id = &"DEMO_LIGHT_2"
+
+[node name="Sketchfab_Scene" parent="LightSwitch3" unique_id=1679861642 instance=ExtResource("1_lgx06")]
+transform = Transform3D(-0.021035716, 0, -0.9997787, 0, 1, 0, 0.9997787, 0, -0.021035716, 0, 0.91480595, 0.102322415)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LightSwitch3" unique_id=1209457337]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.87135744, 0)
+shape = SubResource("BoxShape3D_re3s8")

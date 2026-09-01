@@ -16,6 +16,8 @@ Godot 4.7 first-person horror prototype ("Not Enough Hands"). GDScript only, no 
   ```
   There is no aggregate test runner; run the specific smoke test(s) relevant to the area you changed. `tests/villa_layout_smoke.gd`, `villa_seal_smoke.gd`, and `villa_boot_smoke.gd` are the load-bearing ones for the villa map (reachability, wall-seal raycasts, baked navmesh). `tests/villa_screenshot.gd` / `villa_devshot.gd` are not tests — they write PNGs to `user://villa_shots` for visual inspection.
 
+  `tests/world_replication_pair_smoke.gd` and `tests/lobby_reset_pair_smoke.gd` span two processes: run normally each becomes the server, spawns a second headless copy of itself with `--client`, binds a UDP port (47311 / 47312) and asserts on the verdict the child writes to `user://`. Run them after touching anything in `network/` — a channel can be entirely dead without a single-process test noticing. `tests/villa_run_wipe_smoke.gd` covers the other end of a session (a wiped team handing the room back) and needs only one process, but does load the villa.
+
 ## Core working rule (`.ai/RULES.md`)
 
 Write less, do less, change only what's required: smallest implementation that satisfies the requirement, reuse existing architecture/groups before adding new ones, don't touch unrelated systems, every change needs a reason and a verification step. Priority order: Correctness > Simplicity > Maintainability > Completeness > Extra features.
@@ -55,12 +57,52 @@ Each ghost is built to counter a different player behavior, and each subscribes 
 
 - `door/door.gd` is the interactive door (state machine: `CLOSED`/`OPENING`/`OPEN`/`CLOSING`); `door/defense_door.gd` adds durability/breach for the seven exterior entrances, all in the `defense_doors` group.
 - `door/door_attack_director.gd` orchestrates ghost attacks on defense doors.
-- `power/power_manager.gd` is a group-registered (`power_manager`) singleton-per-scene: devices register themselves and expose `get_power_consumption()`; it drains `current_power` and emits `blackout`/`power_restored`.
-- `minigames/door_ghost_minigame.gd` is the shared flashlight repel minigame used both to drive off an attacker at an intact door and to physically repair a breach.
+- `power/power_manager.gd` is a group-registered (`power_manager`) singleton-per-scene: devices register themselves and expose `get_power_consumption()`; it drains `current_power` and emits `blackout`/`power_restored`. The reserve is spent against `full_load_reserve_seconds` (a full battery lasts that long with the whole house lit), not against raw device wattage — House2's lights alone total ~2900/s and would empty a 1000-unit battery in under a second. At the default 220s a night goes dark twice; `tests/power_pacing_smoke.gd` pins that.
+- `power/main_breaker.gd` is the one physical recovery point for a full-house blackout, instanced in both maps. While the house is dark it highlights itself: the indicator pulses and an `Outline` shell draws a glowing rim around the cabinet, visible from any distance and through walls — a stencil effect (cabinet materials stamp reference 1 with WRITE|WRITE_DEPTH_FAIL, the shell reads it back NOT_EQUAL under `no_depth_test`), grown with camera distance so it never shrinks to nothing. Using it opens `minigames/breaker_minigame.gd` rather than restoring anything: a 10-second countdown wheel where SPACE has to land a reversing, accelerating needle on a white mark, each failure adding 1.5s. `max_repair_seconds` (20s) caps it from both ends — failures stop adding time there, and 20s of actual play auto-completes — and `hit_forgiveness` widens the hit window past the drawn mark. Progress survives a cancel; only `repair_completed` makes the breaker restore the zones and the manager. Same split as the door minigame — the minigame owns no power logic, the breaker owns no minigame logic.
+- `minigames/door_ghost_minigame.gd` is the shared first-person 3D repel encounter fought at the attacked door, used both to drive off an attacker at an intact door and to unlock repairs at a breach. Three phases (peephole → ajar → wide open), each cleared by its own `hits_per_phase` flashlight hits with the counter reset on every transition — never a running total. It owns no durability logic — failure and success both go back through `defense_door.gd`'s `apply_exorcism_failure()`/`complete_exorcism()`. Ghost positions come from `Marker3D`s in the `door_ghost_positions` group authored in `door/defense_door.tscn`, so it stays map-agnostic. The ghost itself is `ghosts/door_ghost.tscn` (the `Meshy_AI_Midnight_Grin_biped` import plus an `Area3D` the flashlight ray must actually reach; the body itself is the shared `ghosts/ghost_visual.tscn`, whose material override cancels the fully-metallic/full-emission material Meshy ships so the beam actually lights it — see `assets/ghosts/model_hunter/README.md`) — a body with poses and no AI, spawned into the running scene for the encounter and freed with it; `hunter_ghost.gd` is untouched by it.
+
+### The totem ritual
+
+`items/totem_ritual.gd` (group `totem_ritual`, one node per map scene) is the
+director for the collect-and-burn objective; `items/totem_brazier.gd` (group
+`totem_braziers`) is the fire it is burned at. Same split as the breaker and its
+minigame: the brazier owns the fire and the three-second hold and knows nothing
+about the clock; the ritual owns how much night a burn is worth, how many items
+exist and when it is over, and never touches the fire. Both are map-agnostic -
+drop points come from the `house2_rooms` markers *both* maps publish, and the villa, which places no
+brazier of its own, gets one dropped at the room nearest the player spawn.
+
+Items are a live population, not a one-off scatter: a restock pass every two
+seconds tops both groups back up to one per player still in the run (carried
+items count, so burning is what puts the next one on the map, not picking one
+up), and a drop point must be at least `min_spawn_distance` (40 m) from every
+player. Where no room clears that bar - House2 is 18 x 12 m - `_pick_far_room()`
+falls back to a random pick from the farthest quarter of the rooms, so the rule
+degrades to "the farthest there is", never to "underfoot".
+
+The 4:00 AM ceiling lives in `NightClock.skip_minutes()` (group `night_clock`),
+not in the ritual: it grants only the minutes left below `skip_limit_hour` and
+returns how many it actually gave. `items/ritual_item.gd` is the shared pickup
+for totems and firewood - it adds `slot_cost` (which `PlayerEquipment` reads to
+reserve both hands for a totem) and the seen-by-camera highlight. Consumers take
+an item out of a player's hands through `Player.release_held_item()`, the
+counterpart to `try_pick_up_item()`; nothing reaches into the equipment slots.
 
 ### Player & threat reporting
 
 `player/player.gd` owns movement, camera, stamina, and blink. All three ghosts report danger through `Player.set_threat_from(...)`, which the horror overlay (`ui/`) uses to always reflect whichever threat is currently worse — new ghosts/hazards should report through this same call rather than driving the overlay directly.
+
+### Multiplayer: one authority, three kinds of seam
+
+`network/` holds two autoloads. `NetworkManager` owns the *session* — roster, lobby, and `game_started`, which is also the door: `_register_player()` refuses newcomers while a night is running. `WorldReplicator` owns the *world* — it streams ghosts and loose items at 20 Hz, doors/power/the brazier at 5 Hz, and spawn/despawn/clock as reliable events. `WorldNet` is the one seam world scripts reach both through, because an autoload's identifier does not resolve in the `--script` smoke tests; **never name `NetworkManager` directly outside `network/`**.
+
+Every world system guards its own simulation with `WorldNet.is_world_authority()` (true offline and on the server) and takes the server's word through its own `apply_network_state()`. Three things do *not* fit that mould and each has its own seam:
+
+- **Presentation a client cannot derive.** Placing a ghost is not enough — all three hide their rig through `_set_manifested()`, which only the brain calls, so that flag is replicated too. A client that gets position but not this shows a moving light with no model.
+- **Anything played through a camera.** Minigames and the death screen are first-person, so the server claims the target and hands the encounter to the owning peer (`Player._begin_remote_encounter`, `_show_death`); the outcome is reported back. Never run one on a replica.
+- **Presses whose whole effect is local geometry.** Interior doors and light switches join `replicated_interactions`, and `Player._try_interact()` echoes the press to every peer. Targets with their own network path deliberately stay out of that group.
+
+A run ends exactly one way: `NetworkManager.end_run()`, which clears `game_started` and the ready flags and returns everyone to the lobby. `villa_main.gd` decides *when* (wipe, dawn, or the last player leaving); NetworkManager decides what to do about it.
 
 ### Dev tools
 

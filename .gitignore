@@ -2,6 +2,7 @@
 .import/
 export.cfg
 export_presets.cfg
+!export_presets.cfg
 
 # Godot 4+ specific ignores
 .godot/
@@ -86,3 +87,6 @@ desktop.ini
 # Local Godot AI integration (do not commit)
 /addons/godot_ai/
 /godot-ai-LICENSE.txt
+
+# Stray installers: GitHub rejects any file over 100 MB
+/assets/**/*.exe

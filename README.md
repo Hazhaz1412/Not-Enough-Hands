@@ -1,13 +1,41 @@
-# Not Enough Hands — House2
+# Not Enough Hands
 
 Godot 4 first-person horror prototype built around a four-level modular house.
-`main.tscn` now uses `house2/house2.tscn`, assembled from the architecture and
-furniture source packs under `assets/map`.
+Running the project now opens the multiplayer menu; every hosted or joined
+session loads `house3/villa_main.tscn`.
+
+## Multiplayer development flow
+
+The current milestone provides ENet host/join, a four-player waiting lobby,
+ready states, player names, replicated player spawning in the Villa, and
+server-authoritative player movement. To test locally, run two game instances:
+create a room in the first, then join `127.0.0.1` on UDP port `7777` from the
+second. Everyone presses Ready; only the lobby host can start the Villa.
+
+A headless dedicated server can be started with:
+
+```powershell
+godot --headless --path . -- --server --port=7777
+```
+
+Clients can join from the menu, or directly for automated testing:
+
+```powershell
+godot --path . -- --join=127.0.0.1 --port=7777 --name=Player2
+```
+
+For Edgegap, expose the container's UDP port `7777`; players must join the
+external IP and dynamically assigned external port returned by Edgegap. The
+allocation/lobby API and replication of shared gameplay state (doors, items,
+ghosts, clock, and win/lose state) are later milestones.
+
+The complete export, container, registry, App Version, and join checklist is in
+[`deploy/edgegap/README.md`](deploy/edgegap/README.md).
 
 ## Play
 
 1. Open `project.godot` in Godot 4.7.
-2. Run `main.tscn` with F6/F5.
+2. Press F5, enter a player name, then host locally or join a server.
 3. Move with WASD, sprint with Shift, crouch with Ctrl, jump with Space, interact
    with E, blink with B, and press Alt to show or recapture the mouse.
 
@@ -78,7 +106,76 @@ second-floor landing, and a second flight reaches the attic.
 The HUD clock starts at **11:55 PM**. Every 1.5 real seconds advances exactly
 one in-game minute, including the midnight rollover. Reaching **6:00 AM** stops
 the threats, pauses the world, and displays the dawn victory screen. The clock
-is hidden while the door-ghost flashlight minigame owns the screen.
+is hidden while the door-ghost encounter owns the screen.
+
+## The totem ritual - buying the night back
+
+The clock can also be pushed forward by hand. A lit **brazier**
+(`items/totem_brazier.tscn`) waits near where the players start. Hold **E** at
+it for three uninterrupted seconds with a **totem** in hand (Kenney stone head,
+`items/totem.tscn`) and it burns: the night jumps **+30 minutes**.
+
+Four rules make it a job rather than a button:
+
+- **A totem needs both hands.** It declares `slot_cost = 2`, so carrying one
+  fills the whole two-slot inventory - no flashlight fuel, no firewood, nothing.
+- **The fire dies with every totem it eats.** Burning one puts the brazier out,
+  and the next totem cannot go in until somebody has carried a piece of
+  **firewood** (`items/firewood.tscn`, one slot) back to it and held **E** for
+  1.5 seconds to relight it. Because a totem takes both hands, that is always a
+  separate trip.
+- **The map holds one totem and one log per player still in the run**, and
+  nothing is scattered up front. Picking an item up does not replace it -
+  burning it does, and the replacement appears somewhere else entirely.
+- **4:00 AM is a ceiling, not a target.** A burn is granted only the minutes
+  that are left below 4:00 AM, so burning at 3:50 buys ten minutes and lands on
+  4:00 exactly. Once the night is there - burned to it or simply arrived at it -
+  every totem and log still lying around vanishes and the brazier reads
+  `NGHI LỄ ĐÃ HOÀN TẤT`. Dawn is still 6:00 AM; the ritual only ever shortens
+  the two hours before it.
+
+Every drop point has to be **at least 40 m from every player**
+(`min_spawn_distance` on the `TotemRitual` node), chosen at random among the
+rooms that qualify - 16 of the villa's 37 rooms do, so an item lands 40-55 m
+away and somewhere different every time. House2 is 18 x 12 m and cannot honour
+any such rule, so there the pick falls back to a random room out of the farthest
+quarter. It degrades to "as far away as this map gets", never to "next to the
+player".
+
+Totems and firewood **glow only while you can actually see them**: inside the
+camera frustum, within 22 m (16 m for firewood), and with nothing solid in the
+way. The check is a frustum test plus one world-masked raycast every 0.12 s, so
+the glow is a reward for sweeping a room with your eyes and never an x-ray
+through a wall.
+
+## Going down, and being picked back up
+
+Being caught by a ghost is only the end of the run when nobody is left to come
+back for you. With at least one teammate still on their feet, a kill puts you on
+the floor instead:
+
+- **Downed.** You cannot move, interact, or use an item. You can still look
+  around from where you are lying, and ghosts stop treating you as a target the
+  moment you go down — they will not finish a body on the floor, and they lose
+  interest until somebody lifts you.
+- **The budget is a whole run, not one death.** Every player has **180 seconds**
+  of total floor time. Each death takes a flat **60 seconds** off that budget up
+  front, and the rest drains in real time while you lie there. It never refills,
+  so a rescue is a reprieve, not a reset, and three deaths is normally the limit.
+- **The ring is the clock.** Downed players show as a ring drawn straight onto
+  every teammate's HUD, so it reads through walls, and it stays pinned to the
+  screen edge when the body is behind you. The outer sweep is the time left, the
+  inner sweep is how far the rescue has got. Deliberately no numbers.
+- **Ten seconds, held.** A teammate stands next to the body and holds **E** for
+  ten uninterrupted seconds. The bleed-out clock is **frozen** for the whole
+  rescue, so being reached in time is what matters, not being reached quickly.
+  Letting go unwinds the progress at double speed.
+- **Spectator.** When the budget reaches zero — bled out, or spent by a death
+  with under 60 seconds left — the player becomes a spectator: no collision, no
+  body, free flight, and no ghost will ever look at them again.
+
+Alone, none of this applies. A kill with no teammate left standing runs the
+original jumpscare and game-over screen exactly as before.
 
 ## House2 layout
 
@@ -95,33 +192,63 @@ Interior partitions use open modular frames so the navigation mesh, player, and
 statue can circulate through every room. The seven exterior entrances remain
 repairable defense doors used by the attack director.
 
-## Door-ghost flashlight minigame
+## Door-ghost encounter
 
 As soon as a door starts rustling, scratching, or being smashed, approach it,
-aim at it, and press E to enter the 30-second flashlight minigame. Winning drives
-the attacker away before it can do more damage. Timing out gives the attacker a
-heavy hit and immediately starts a fresh attempt; repeated failures can still
-break the door while the minigame is active.
+aim at it, and press E. Control does not leave the world: the player is pinned to
+the attacked door with the flashlight forced on, and the attacker is a real 3D
+ghost standing somewhere in the exterior - the `Meshy_AI_Midnight_Grin_biped`
+biped, in `ghosts/door_ghost.tscn`. Find it and hold the beam on it for
+0.18 seconds and it is pushed back one step. **Each of the three phases costs
+five hits of its own**, and the counter resets to `0 / 5` on every transition -
+so the whole encounter is **fifteen** hits. Clearing the third phase hands the
+door back through the same `complete_exorcism()` the previous version used - at
+an intact door that drives the attacker away, at a breached one it unlocks
+physical repairs.
 
-A defense door that reaches zero durability can no longer be repaired
-immediately, but the same E interaction and minigame remain available at the
-breach. The world is covered in darkness and the mouse moves a small light:
-hold it over the hidden face to build an invisible repel meter. Every fifteen
-points the face jumps to another part of the screen and removes three points.
-The balanced assist gives the flashlight a wider beam and face hit area. After
-a 1.25-second grace period with no drain, missing it drains one point every 0.20
-seconds. On first catching the face in the beam there is also a 6-16 percent
-progress-scaled chance that it dodges immediately. Its side-to-side head shake,
-distortion, twitch rate, audio pressure, and instant-dodge chance all intensify
-toward 100 percent. Every relocation remains random among anchors away from the
-current cursor position, so the face never deliberately appears near the light.
+The ghost's approach window is **5 seconds** per search/hit cycle - not per
+phase - and every landed hit resets it in full. Ignore it and it walks in from its spot toward the door, the heartbeat
+tightens, and teeth close in from the edges of the screen. With **1 second** left
+(1.5 in the final phase) it stops where it stands, directly in front of the
+player, and simply looks at them. At zero it attacks: the door takes its own
+single **20-point** hit through `apply_exorcism_failure()` - the same call, so
+durability, the repair ceiling and breaching are still owned entirely by
+`door/defense_door.gd` - and the encounter hands the door back to the normal
+attack flow instead of retrying.
 
-At an intact door, reaching 100 drives the attacker away; at a breached door it
-unlocks physical repairs. A breached-door timeout triggers a jumpscare and
-removes 20 points from the repair ceiling (down to a minimum of 10). The active
-door cannot take normal damage outside these scripted failure hits. A development
-safety switch also suspends statue and crawler attacks until 1.5 seconds after
-the minigame closes.
+The encounter opens up one phase at a time, each cleared by its own five hits:
+
+| | Cost | Look limit | View |
+|---|---|---|---|
+| 1 · LỖ CHỐNG TRỘM | 5 hits | ±45° | behind the leaf, spyhole aperture |
+| 2 · MỞ HÉ CỬA | 5 hits | ±60° | leaf swung 26°, wider opening |
+| 3 · MỞ TOANG CỬA | 5 hits | free | leaf swung 88°, standing in the opening |
+
+The overlay always shows where the player is *in the current phase* -
+`PHASE 2 · MỞ HÉ CỬA` over `SOI MA: 0 / 5` - never a running total. The state is
+`(state, phase)`: the SEARCH → RETREAT → SEARCH loop and the timeout path out of
+it (STARE → JUMPSCARE) are identical in all three phases, so the phase is a
+second axis rather than three copied sets of states.
+
+Whether the beam is on the ghost is decided by the player's own `SpotLight3D` -
+its range, its cone, and **one ray that has to arrive at the ghost's own
+collider**. Being somewhere on screen is never enough, and a wall in the way
+stops a perfectly aimed beam. Caught in it, the ghost stops walking, recoils
+where it stands for a beat, and only then goes.
+
+Its standing positions are `Marker3D`s in the **`door_ghost_positions`** group -
+`DoorGhostPosition_A`…`_E`, authored once in `door/defense_door.tscn`, so both
+maps get them from the shared door scene and the count stays open-ended. Each is
+rebuilt on the encounter's own upright plane, floor-snapped, and pulled back out
+of anything in front of it; a position the beam cannot reach from the doorway is
+discarded, so the ghost can never hide somewhere unwinnable. A development safety
+switch also suspends statue and crawler attacks until 1.5 seconds after the
+encounter closes.
+
+The ghost itself is only a body: `ghosts/door_ghost.gd` holds the model, its
+poses and its hit volume, and is driven entirely by the encounter.
+`ghosts/hunter_ghost.gd` keeps the Huntsman's real behaviour and does not know
+it exists, so nothing here can change how the Huntsman plays.
 
 ## Ghosts
 
@@ -131,11 +258,11 @@ nothing about surviving the others.
 | | Statue (`ghosts/statue_ghost.gd`) | Crawler (`ghosts/crawler_ghost.gd`) | Huntsman (`ghosts/hunter_ghost.gd`) |
 |---|---|---|---|
 | Senses | Sight — it freezes while any player can see it | Sound — it is blind, and hears movement | Tracks the floor you walked on, then sees you — in every direction at once |
-| Counterplay | Keep looking at it; do not blink | Go quiet: crouch, or stop moving entirely | Keep a wall between you for five whole seconds — then it walks away from you, not toward you |
+| Counterplay | Keep looking at it, do not blink, and never let it inside 2 m | Go quiet: crouch, or stop moving entirely | Keep a wall between you for five whole seconds — then it walks away from you, not toward you |
 | Space | Floors and stairs, on the navmesh | Floors, walls and ceilings; travels overhead | Every room on every floor, on foot, room by room |
 | Arrival | Teleports into a scripted ambush, then vanishes | Announces itself with a fly-past, then sweeps the house | Walks in through a door it has already broken |
 | Presence | Gone the moment you look away | Gone between hunts | Never teleports, never vanishes while inside |
-| Kill | Grabs you during a blink or a look-away; distant statues surge much farther per blink | Leaps 13 m at 21 m/s, or mauls what it touches | Roars for 2.5 s, then charges a shade faster than a sprint and grabs |
+| Kill | Grabs you during a blink or a look-away; distant statues surge much farther per blink, and a blink inside `blink_kill_distance` (2 m) kills outright with no wind-up | Leaps 13 m at 21 m/s, or mauls what it touches | Roars for 2.5 s, then charges a shade faster than a sprint and grabs |
 
 Standing still is the correct answer to the crawler, staring is the correct
 answer to the statue, and neither does anything at all to the huntsman. That is
@@ -220,6 +347,16 @@ frame. Turn it back on if the budget allows — it is the best-looking thing the
 creature does. Per-frame animation costs about 0.45 ms with the eye aiming
 spread round-robin over three frames and the drips and eye-tracking dropped past
 `detail_distance`.
+
+**Looking at it corrupts the camera.** Keeping the Huntsman near the centre of
+the view inside `hunter_gaze_range` drives a dedicated full-screen interference
+signal: animated sensor grain, scanlines, horizontal tearing and a red/cyan
+split. It fades with angle and distance and a wall blocks the strong version.
+A Huntsman within `hunter_gaze_through_wall_range` still leaks a faint signal
+through that wall, regardless of camera direction, so being one thin partition
+away feels wrong without turning the effect into a long-range detector. This is
+computed on each player's local camera and therefore remains per-player in a
+multiplayer session.
 
 **It hunts by track.** Every `spoor_interval` (0.4 s) each player writes a mark
 to the floor: a position, a time, and a strength. Sprinting prints hard,
@@ -348,12 +485,24 @@ horror overlay on whichever is currently worse.
 House2 is 18 × 12 m and its seven entrances are close enough that one player can
 cover several of them. `NEH_map_spec_v2.md` asks for a house about four times
 that size, where the geometry itself forces the team apart. That map lives in
-`house3/` **beside** House2, not in place of it: `main.tscn` and every House2
-test are untouched, and the villa reaches the player, the three ghosts, the
-defense doors, the power system and the audio through exactly the same node
-groups.
+`house3/` **beside** House2. The multiplayer entry point now selects the Villa,
+while the House2 scenes and tests remain available. The villa reaches the
+player, the three ghosts, the defense doors, the power system and the audio
+through exactly the same node groups.
 
-Run it with `house3/villa_main.tscn` (F6). House2 still runs from `main.tscn`.
+Run the full multiplayer flow with F5, or run `house3/villa_main.tscn` directly
+with F6 for an offline Villa session.
+
+The one behavioural difference is the huntsman. House2 has a single one that
+walks in through whichever breach it likes; the villa is big enough that one
+creature is not a threat to a spread-out team, so `villa_main.gd` spawns a fresh
+huntsman *at* each entrance that breaks — capped at `MAX_BREACH_HUNTERS` (3).
+The cap matters because a huntsman never leaves: without it, seven lost doors
+would mean seven bodies in the building for the rest of the night, and the
+fourth one is a frame-rate problem before it is a difficulty problem. Further
+breaches past the cap are still holes the player has to live with, they just do
+not add another creature. The scene's own dormant `HunterGhost` stays out of it
+entirely, as a DevTools template with `entry_enabled` off.
 
 The one behavioural difference is the huntsman. House2 has a single one that
 walks in through whichever breach it likes; the villa is big enough that one
@@ -386,7 +535,7 @@ sit on.
 the junctions, open the door cells, repaint the light shaft solid on the floor
 above it, and cut the entrances into the outer wall. `villa_house.gd` then turns
 that cell grid into geometry — greedy-rectangle floor slabs, wall runs merged
-along each straight face, doorways, ramps, railings and lights — and publishes
+along each straight face, doorways, ramps and railings — and publishes
 room, junction, entrance, spawn and ghost-route markers.
 
 Four compact 4 × 4 m WCs are cut into the outer room bands: two on the ground
@@ -401,7 +550,7 @@ Open the scene the parts should live in - `house3/villa_main.tscn` is the one
 that is played, and it is where the current bake sits - select its `VillaHouse`
 node, and use the **Villa Authoring** controls in the Inspector:
 
-1. Set detail, furniture and lighting to the version you want to edit.
+1. Set detail and furniture to the version you want to edit.
 2. Press **Bake Editable Parts**, then save the scene.
 3. Expand `Generated/Level_*/Architecture`. Walls, floor slabs, ceilings and
    railings are now separate 2 m modules. Moving a body moves both its visual
@@ -598,13 +747,13 @@ to a kill, losing a player sends it walking away from them rather than back onto
 them, attack safety still blocks that kill, sealing the last breach traps it
 inside, and a wide-open breach and twelve quiet seconds still leave it in the
 house - because it never leaves.
-`stalker_rig_smoke.gd` covers its body instead of its hunt, because a
-procedurally built creature rots silently: that it still fits through a 2.4 m
-doorway in every pose, that its feet still meet the floor the collision capsule
-stands on, that every chain the builder made is still reachable from the
-animation (a limb that exists but stopped moving is the one bug a screenshot
-will not show), and that the gaze light is still inside the crown the player can
-see scanning the corridor.
+`hunter_body_smoke.gd` covers its body instead of its hunt, because a model swap
+rots silently: that the body under `VisualRoot` really is the shared Midnight
+Grin biped, that it still fits through a 2.4 m doorway in every pose, that its
+feet still meet the floor the collision capsule stands on, that every clip the
+hunt can ask for is actually in the library (a clip the library lacks leaves the
+creature holding whichever pose it was already in, which is the one bug a
+screenshot will not show), and that the gaze light is still at head height.
 `crawler_locomotion_smoke.gd` covers how the crawler gets about, as opposed to
 what it wants: that it works its way round an obstruction instead of shoving at
 the face of it, and picks the side the obstruction actually ends on; that
@@ -614,6 +763,15 @@ on a ceiling indefinitely; that its search sweeps pick points on its own side of
 a wall; and that with a navigation mesh baked under it, a patrol still leaves the
 floor for the wall - the navmesh used to suppress the climb entirely, so in both
 shipping houses the wall-crawling never actually happened.
+`downed_revive_smoke.gd` covers the co-op downed contract above: that a kill with
+a teammate still standing puts a player on the floor rather than ending their
+run, that no ghost will target them there and will again once they are up, that
+each death charges exactly 60 seconds of the 180-second budget, that the
+bleed-out clock is genuinely frozen for all ten seconds of a rescue and the
+budget is not refilled by one, that a teammate out of range cannot start a
+rescue, that spending the last of the budget goes straight to spectator with no
+collision left in the world, and that a kill with nobody left standing still
+shows the original death screen.
 `house_hunter_sweep_smoke.gd` then drops it into House2 itself, in three stages:
 it must search real rooms across the baked navmesh instead of grinding into the
 first wall; it must find a player standing perfectly still two floors above it;

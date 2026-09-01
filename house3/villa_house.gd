@@ -43,23 +43,23 @@ const FURNITURE_PLANS := {
 	"bedroom": {
 		"unique": ["Bed Base 1 1", "Wardrobe", "Mirror"],
 		"large": ["Drawer-Cabinet", "Drawer 1", "Chair 2"],
-		"small": ["Bed Table", "Lamp 1", "Painting", "Simple Curtains Closed"],
+		"small": ["Bed Table", "Painting", "Simple Curtains Closed"],
 	},
 	"master": {
 		"unique": ["Bed Base 1 1", "Wardrobe", "Mirror", "Puff"],
 		"large": ["Drawer-Cabinet", "Drawer 1", "Sofa 2"],
-		"small": ["Bed Table", "Lamp 2", "Painting 2", "Simple Curtains Closed"],
+		"small": ["Bed Table", "Painting 2", "Simple Curtains Closed"],
 	},
 	"lounge": {
 		"unique": ["Sofa 1", "TV 1", "Sofa 2"],
 		"large": ["Drawer-Cabinet", "Modern Shelves", "Puff", "Drawer 1"],
-		"small": ["Lamp 2", "Painting", "Plant Deco 1", "Vase 1"],
+		"small": ["Painting", "Plant Deco 1", "Vase 1"],
 		"table": "Coffee Table",
 	},
 	"hall": {
 		"unique": ["Mirror", "Drawer-Cabinet"],
 		"large": ["Puff", "Stool", "Modern Shelves"],
-		"small": ["Painting 2", "Vase 1", "Plant Deco 1", "Lamp 3"],
+		"small": ["Painting 2", "Vase 1", "Plant Deco 1"],
 		"table": "Round Table",
 		"seat": "Chair 3",
 		"seats": 3,
@@ -67,7 +67,7 @@ const FURNITURE_PLANS := {
 	"study": {
 		"unique": ["Modern Shelves", "Drawer-Cabinet"],
 		"large": ["Modern Shelves", "Simple Shelf", "Drawer 1", "Chair 2"],
-		"small": ["Painting", "Lamp 3", "Vase 2"],
+		"small": ["Painting", "Vase 2"],
 		"table": "Table Curved",
 		"seat": "Chair 2",
 		"seats": 2,
@@ -85,7 +85,7 @@ const FURNITURE_PLANS := {
 	"dining": {
 		"unique": ["Drawer-Cabinet", "Mirror"],
 		"large": ["Drawer 1", "Drawer-Cabinet", "Modern Shelves"],
-		"small": ["Painting 2", "Vase 1", "Lamp 2", "Simple Shelf"],
+		"small": ["Painting 2", "Vase 1", "Simple Shelf"],
 		"table": "Dining Table",
 		"seat": "Chair",
 		"seats": 6,
@@ -115,7 +115,7 @@ const FURNITURE_PLANS := {
 	"chapel": {
 		"unique": ["Modern Shelves"],
 		"large": ["Chair 3", "Chair 3", "Stool"],
-		"small": ["Painting 3", "Vase 2", "Lamp 1"],
+		"small": ["Painting 3", "Vase 2"],
 		"table": "Round Table",
 		"seat": "Chair 3",
 		"seats": 4,
@@ -172,7 +172,6 @@ enum AuthoringGranularity {
 @export var editor_preview: bool = true
 @export var detail: Detail = Detail.FULL
 @export var build_furniture: bool = true
-@export var build_lighting: bool = true
 
 @export_category("Villa Authoring")
 @export var authoring_granularity: AuthoringGranularity = AuthoringGranularity.OPTIMIZED
@@ -321,8 +320,6 @@ func _build_level(root: Node3D, level_data: Dictionary) -> void:
 	_build_ceiling(architecture, level_data)
 	_build_doors(_container(root, "Doors"), level_data)
 	_build_junction_markers(_container(root, "Junctions"), level)
-	if build_lighting:
-		_build_level_lighting(_container(root, "Lighting"), level_data)
 	# Props run before the room markers so each room can publish a standing
 	# point that is not inside its own dining table.
 	if build_furniture and detail == Detail.FULL:
@@ -446,12 +443,22 @@ func _build_exterior_shell(parent: Node3D, level_data: Dictionary) -> void:
 func _build_wall_run(parent: Node3D, run: Dictionary, level: int, wall_name: String) -> void:
 	var direction: Vector2i = run["dir"]
 	var span: int = int(run["to"]) - int(run["from"]) + 1
-	if authoring_granularity == AuthoringGranularity.EDITABLE_MODULES and span > 1:
+	var crosses_entrance := wall_name == "InteriorWall" \
+		and _run_contains_entrance_face(run, level)
+	# A breach cell is walkable, so the generic boundary pass sees its outside
+	# edge as an interior wall. Split a merged run when necessary, then omit the
+	# exact entrance modules. The exterior shell already omits BREACH cells.
+	if span > 1 and (
+		authoring_granularity == AuthoringGranularity.EDITABLE_MODULES
+		or crosses_entrance
+	):
 		for value: int in range(int(run["from"]), int(run["to"]) + 1):
 			var module_run := run.duplicate()
 			module_run["from"] = value
 			module_run["to"] = value
 			_build_wall_run(parent, module_run, level, wall_name)
+		return
+	if crosses_entrance:
 		return
 	var length := span * spec.cell_size
 	var y := level * spec.floor_height
@@ -485,6 +492,26 @@ func _build_wall_run(parent: Node3D, run: Dictionary, level: int, wall_name: Str
 		)
 		module_position.y = y
 		_asset(WALL_3X2, body, wall_name + "Module", module_position, rotation_y, stretch)
+
+
+func _run_contains_entrance_face(run: Dictionary, level: int) -> bool:
+	var direction: Vector2i = run["dir"]
+	var fixed: int = int(run["fixed"])
+	var from: int = int(run["from"])
+	var to: int = int(run["to"])
+	for entrance: Dictionary in spec.entrances():
+		if int(entrance["level"]) != level or bool(entrance.get("overhead", false)):
+			continue
+		var outward := _entrance_outward(entrance)
+		if direction != Vector2i(roundi(outward.x), roundi(outward.z)):
+			continue
+		for cell_pair: Variant in entrance["cells"]:
+			var cell := VillaSpec.to_cell(cell_pair)
+			var cell_fixed := cell.x if direction.x != 0 else cell.y
+			var varying := cell.y if direction.x != 0 else cell.x
+			if cell_fixed == fixed and varying >= from and varying <= to:
+				return true
+	return false
 
 
 func _build_railing_run(parent: Node3D, run: Dictionary, level: int) -> void:
@@ -1054,39 +1081,6 @@ func _route_marker(parent: Node3D, marker_name: String, position: Vector3, group
 	parent.add_child(marker)
 
 
-# --- lighting and props ------------------------------------------------------
-
-func _build_level_lighting(parent: Node3D, level_data: Dictionary) -> void:
-	var level: int = level_data["level"]
-	var y := level * spec.floor_height + spec.floor_height - 0.7
-	for room: Dictionary in level_data["rooms"]:
-		var rect := VillaSpec.to_rect(room["rect"])
-		var centre := spec.rect_to_world(rect, level)
-		_add_light(
-			parent,
-			String(room["id"]) + "Light",
-			Vector3(centre.x, y, centre.z),
-			Color(0.62, 0.47, 0.29),
-			0.55,
-			maxf(6.0, minf(float(rect.size.x), float(rect.size.y)) * spec.cell_size * 0.9)
-		)
-		if detail == Detail.FULL:
-			_asset(_furniture("Ceiling Lamp 2"), parent, "CeilingFixture",
-				Vector3(centre.x, y + 0.42, centre.z))
-	for junction: Dictionary in spec.junctions_on(level):
-		var rect := VillaSpec.to_rect(junction["rect"])
-		var centre := spec.rect_to_world(rect, level)
-		_add_light(
-			parent,
-			String(junction["id"]) + "Light",
-			Vector3(centre.x, y, centre.z),
-			Color(0.55, 0.44, 0.32),
-			0.5,
-			8.0,
-			true
-		)
-
-
 func _build_level_props(parent: Node3D, level_data: Dictionary) -> void:
 	var level: int = level_data["level"]
 	var reserved := _reserved_cells(level_data)
@@ -1588,27 +1582,6 @@ func _container(parent: Node3D, container_name: String) -> Node3D:
 	container.name = container_name
 	parent.add_child(container)
 	return container
-
-
-func _add_light(
-	parent: Node3D,
-	light_name: String,
-	position: Vector3,
-	color: Color,
-	energy: float,
-	range_value: float,
-	shadows := false
-) -> void:
-	var light := OmniLight3D.new()
-	light.name = light_name
-	light.position = position
-	light.light_color = color
-	light.light_energy = energy
-	light.omni_range = range_value
-	light.omni_attenuation = 1.35
-	light.shadow_enabled = shadows
-	light.add_to_group("flickering_house_lights")
-	parent.add_child(light)
 
 
 func _material(color: Color, roughness: float, metallic := 0.0) -> StandardMaterial3D:

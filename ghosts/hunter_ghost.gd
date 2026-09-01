@@ -4,7 +4,9 @@ extends CharacterBody3D
 ##
 ## The third ghost, and the only one the night does not summon: this one is
 ## summoned by failure. When a defense door finally breaks, this is the thing
-## that walks in through the hole. Its body is built in `stalker_rig.gd`: a
+## that walks in through the hole. Its body is the Midnight Grin biped, worn
+## through ghosts/ghost_visual.tscn, which answers the same locomotion/gaze API
+## the previous procedural rig did - so nothing below this line changed with it. A
 ## hunched skeleton with arms longer than its legs, a crown of bone spines
 ## around a hole where a face should be, and eyes on its chest, ribs, joints,
 ## back and tail. This file is the hunt; that file is the anatomy.
@@ -309,6 +311,12 @@ signal killed_player(player: Node3D)
 ## going the other way is the counterplay to something that outruns you.
 @export var footstep_volume_db: float = 4.0
 
+## Below this it is standing, above it is on its feet - the only number the clip
+## choice adds, and it only picks between clips.
+const WALK_SPEED_THRESHOLD := 0.15
+## Clips that fire once and hold their last frame instead of looping.
+const ONE_SHOT_CLIPS := [&"Attack", &"Skill 3"]
+
 var state: HunterState = HunterState.DORMANT
 ## True from the moment it steps through a breach until it steps back out.
 var inside_house: bool = false
@@ -378,11 +386,11 @@ var _lantern_energy: float = 0.0
 var _sweep_phase: float = 0.0
 var _sniff_timer: float = 0.0
 
-## The body lives in `stalker_rig.gd` and builds itself: this script owns the
+## The body is `ghosts/ghost_visual.tscn`: this script owns the
 ## hunt and never touches a bone. Everything below is set once per frame in
 ## `_update_presentation`, and the rig works out what two hundred parts should
 ## be doing about it.
-@onready var visual_root: StalkerRig = $VisualRoot
+@onready var visual_root: GhostVisual = $VisualRoot
 ## The gaze cone, which is the creature's own crown of eyes rather than
 ## anything it is carrying. The `lantern_*` tuning names are kept throughout -
 ## the mechanic is unchanged and the README's vocabulary still holds - but the
@@ -444,6 +452,12 @@ func _resolve_level() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# A client owns no ghost. Its copy is placed by WorldReplicator, which then
+	# calls _update_presentation() so the body still walks and the lantern still
+	# swings - but the brain below, and everything it can do to a player, is the
+	# server's alone.
+	if not WorldNet.is_world_authority():
+		return
 	_clock += delta
 	attack_resume_grace_remaining = maxf(attack_resume_grace_remaining - delta, 0.0)
 	if not active:
@@ -1800,6 +1814,8 @@ func _update_presentation(delta: float) -> void:
 	if watched:
 		visual_root.has_look_point = true
 		visual_root.look_point = watched.global_position + Vector3.UP * 1.2
+	var clip := _clip_for_state(horizontal_speed)
+	visual_root.play_clip(clip, not ONE_SHOT_CLIPS.has(clip))
 	visual_root.advance(delta)
 
 	# The claws and the tail drag the whole time it moves. This is the sound
@@ -1820,6 +1836,24 @@ func _update_presentation(delta: float) -> void:
 	lantern_light.light_color = Color(0.62, 0.70, 0.82).lerp(Color(0.95, 0.38, 0.28), _agitation)
 
 	_update_breath_audio()
+
+
+## Which clip the body plays, read off the state it is already in - no new
+## timing and no state of its own, so the AI stays the only thing deciding what
+## the Huntsman is doing. Called every frame; GhostVisual.play_clip() ignores
+## a request for the clip already selected, which is what keeps the two one-shots
+## from restarting while it holds a seize or a roar.
+func _clip_for_state(horizontal_speed: float) -> StringName:
+	match state:
+		HunterState.SEIZING:
+			return &"Attack"
+		HunterState.ROARING:
+			return &"Skill 3"
+	if horizontal_speed < WALK_SPEED_THRESHOLD:
+		return &"Idle"
+	# It charges a locked target but only ever walks a patrol or a cast, so the
+	# run is reserved for the one state that actually sprints.
+	return &"Run" if state == HunterState.LOCKED else &"Walk"
 
 
 ## Nearest living player inside dread range, or null. Only used to give the eyes

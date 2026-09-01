@@ -1,0 +1,7 @@
+**
+!build/
+!build/server/
+!build/server/**
+!deploy/
+!deploy/edgegap/
+!deploy/edgegap/Dockerfile

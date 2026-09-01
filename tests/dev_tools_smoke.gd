@@ -174,6 +174,63 @@ func _run() -> void:
 		_fail("Dev Tools panel did not close.")
 		return
 
+	# House2 has no ElectricalZones, so the blackout button has to fall through
+	# to PowerManager's global outage - otherwise the default map has no way to
+	# cut the power at all and the main breaker can never be seen lit.
+	var manager := get_first_node_in_group("power_manager") as PowerManager
+	var breaker := get_first_node_in_group("main_breakers") as MainBreaker
+	if not manager or not breaker:
+		_fail("Main scene is missing its PowerManager or MainBreaker.")
+		return
+	if not get_nodes_in_group("electrical_zones").is_empty():
+		_fail("This check is about the no-zone fallback; House2 gained zones.")
+		return
+	dev_tools.set_all_zones_powered(false)
+	await process_frame
+	if not manager.is_blackout:
+		_fail("The blackout button did nothing on a map without electrical zones.")
+		return
+	if not breaker.outline.visible:
+		_fail("The main breaker did not light up during a dev-triggered blackout.")
+		return
+	dev_tools.set_all_zones_powered(true)
+	await process_frame
+	if manager.is_blackout or breaker.outline.visible:
+		_fail("Restoring power left the house dark or the breaker still lit.")
+		return
+
+	# The second route to a dark house: empty the battery and let PowerManager's
+	# own drain reach zero, rather than forcing the outage flag. Both maps ship
+	# enable_power_drain = false, so the button has to switch drain on or the
+	# reserve just sits at 1 and the house never goes dark.
+	if manager.get_total_load() <= 0.0:
+		_fail("House2 has no power draw, so the drain route cannot be tested.")
+		return
+	dev_tools.drain_house_power()
+	if not manager.enable_power_drain or manager.current_power > 1.0:
+		_fail("Draining the house power did not arm the reserve for an outage.")
+		return
+	# The reserve now drains at a designed pace rather than instantly, so 1 unit
+	# takes a fraction of a second - a few frames is not enough to see it land.
+	var drained := false
+	for _frame: int in 120:
+		await process_frame
+		if manager.is_blackout:
+			drained = true
+			break
+	if not drained:
+		_fail("Draining the reserve to 1 never reached a blackout (power=%.2f)." % manager.current_power)
+		return
+	if not breaker.outline.visible:
+		_fail("The main breaker did not light up for a drained-battery blackout.")
+		return
+	dev_tools.recharge_house_power()
+	manager.enable_power_drain = false
+	await process_frame
+	if manager.is_blackout or breaker.outline.visible:
+		_fail("Recharging did not clear the drained-battery blackout.")
+		return
+
 	for audio: AudioStreamPlayer3D in [
 		statue.get_node("TeleportAudio"),
 		statue.get_node("AttackAudio"),

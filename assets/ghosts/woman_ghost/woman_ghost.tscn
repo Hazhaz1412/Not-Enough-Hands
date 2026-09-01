@@ -1,0 +1,30 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://assets/ghosts/woman_ghost/woman_ghost.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://blvml37oip4sf" path="res://assets/ghosts/woman_ghost/Meshy_AI_Animation_Idle_withSkin.glb" id="2_idle"]
+[ext_resource type="PackedScene" uid="uid://cg384da8crf0h" path="res://assets/ghosts/woman_ghost/Meshy_AI_Animation_Unsteady_Walk_withSkin.glb" id="3_walk"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_woman_ghost"]
+radius = 0.32
+height = 1.7
+
+[node name="WomanGhost" type="CharacterBody3D" groups=["woman_ghosts"]]
+collision_layer = 4
+collision_mask = 1
+floor_snap_length = 0.3
+script = ExtResource("1_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.85, 0)
+shape = SubResource("CapsuleShape_woman_ghost")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+radius = 0.38
+height = 1.7
+path_desired_distance = 0.35
+target_desired_distance = 0.8
+avoidance_enabled = true
+
+[node name="IdleAnimationSource" parent="." instance=ExtResource("2_idle")]
+
+[node name="AnimatedModel" parent="." instance=ExtResource("3_walk")]

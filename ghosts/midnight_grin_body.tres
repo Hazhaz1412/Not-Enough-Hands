@@ -1,0 +1,10 @@
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://c1mdnghtgrnbd"]
+
+[ext_resource type="Texture2D" uid="uid://bo7eq51ftgpkq" path="res://assets/ghosts/model_hunter/Meshy_AI_Midnight_Grin_biped/Meshy_AI_Midnight_Grin_biped_Animation_Walking_withSkin_texture_0.png" id="1_albedo"]
+
+[resource]
+resource_name = "MidnightGrinBody"
+albedo_texture = ExtResource("1_albedo")
+metallic = 0.0
+roughness = 0.9
+cull_mode = 2

@@ -1,11 +1,10 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://minigames/door_ghost_minigame.gd" id="1_script"]
 [ext_resource type="Shader" path="res://minigames/door_ghost_darkness.gdshader" id="2_shader"]
-[ext_resource type="Texture2D" path="res://assets/minigame/door_ghost_face_v2.png" id="3_face"]
+[ext_resource type="PackedScene" path="res://ghosts/door_ghost.tscn" id="3_ghost"]
 [ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_drone.mp3" id="4_drone"]
 [ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_heartbeat.mp3" id="5_heartbeat"]
-[ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_whispers.mp3" id="6_whispers"]
 [ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_glitch.mp3" id="7_glitch"]
 [ext_resource type="AudioStream" path="res://assets/audio/crawler_bone_snap.wav" id="8_bone"]
 [ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_flashlight.mp3" id="9_flashlight"]
@@ -13,91 +12,118 @@
 [ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_jumpscare.mp3" id="11_jumpscare"]
 [ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_music.ogg" id="12_music"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_darkness"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("2_shader")
 
-[sub_resource type="StyleBoxFlat" id="StyleBox_cursor"]
-bg_color = Color(0.78, 0.9, 1, 0.96)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-shadow_color = Color(0.3, 0.56, 0.78, 0.7)
-shadow_size = 5
+[sub_resource type="StyleBoxFlat" id="StyleBox_pip"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
 
-[sub_resource type="StyleBoxFlat" id="StyleBox_progress_bg"]
-bg_color = Color(0.01, 0.012, 0.015, 0.9)
-
-[sub_resource type="StyleBoxFlat" id="StyleBox_progress_fill"]
-bg_color = Color(0.55, 0.08, 0.065, 0.95)
-
-[node name="DoorGhostMinigame" type="CanvasLayer"]
-visible = false
-layer = 125
+[node name="DoorGhostMinigame" type="Node3D"]
 process_mode = 3
 script = ExtResource("1_script")
+ghost_scene = ExtResource("3_ghost")
 
-[node name="Root" type="Control" parent="."]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
-[node name="BlackBackground" type="ColorRect" parent="Root"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(0, 0, 0, 1)
-
-[node name="Ghost" type="TextureRect" parent="Root"]
-offset_right = 210.0
-offset_bottom = 315.0
-mouse_filter = 2
-texture_filter = 1
-texture = ExtResource("3_face")
-expand_mode = 1
-stretch_mode = 5
-
-[node name="DarknessMask" type="ColorRect" parent="Root"]
-material = SubResource("ShaderMaterial_darkness")
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
-[node name="CursorDot" type="Panel" parent="Root"]
-offset_right = 8.0
-offset_bottom = 8.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBox_cursor")
-
-[node name="DebugProgress" type="ProgressBar" parent="Root"]
+[node name="Overlay" type="CanvasLayer" parent="."]
 visible = false
-layout_mode = 1
+layer = 125
+
+[node name="Mask" type="ColorRect" parent="Overlay"]
+material = SubResource("ShaderMaterial_mask")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Hint" type="Label" parent="Overlay"]
 anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -180.0
-offset_top = -42.0
-offset_right = 180.0
-offset_bottom = -28.0
+offset_left = -280.0
+offset_top = -104.0
+offset_right = 280.0
+offset_bottom = -76.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
-theme_override_styles/background = SubResource("StyleBox_progress_bg")
-theme_override_styles/fill = SubResource("StyleBox_progress_fill")
-show_percentage = false
+theme_override_colors/font_color = Color(0.78, 0.85, 0.92, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 6
+text = "TÌM NÓ NGOÀI CỬA — CHIẾU ĐÈN VÀO NÓ"
+horizontal_alignment = 1
+
+[node name="Progress" type="Label" parent="Overlay"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -280.0
+offset_top = -204.0
+offset_right = 280.0
+offset_bottom = -148.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.88, 0.93, 0.98, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 6
+theme_override_constants/line_spacing = 2
+text = "PHASE 1
+SOI MA: 0 / 5"
+horizontal_alignment = 1
+
+[node name="Pips" type="HBoxContainer" parent="Overlay"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -46.0
+offset_top = -140.0
+offset_right = 46.0
+offset_bottom = -130.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Pip1" type="Panel" parent="Overlay/Pips"]
+custom_minimum_size = Vector2(10, 10)
+modulate = Color(1, 1, 1, 0.18)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_pip")
+
+[node name="Pip2" type="Panel" parent="Overlay/Pips"]
+custom_minimum_size = Vector2(10, 10)
+modulate = Color(1, 1, 1, 0.18)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_pip")
+
+[node name="Pip3" type="Panel" parent="Overlay/Pips"]
+custom_minimum_size = Vector2(10, 10)
+modulate = Color(1, 1, 1, 0.18)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_pip")
+
+[node name="Pip4" type="Panel" parent="Overlay/Pips"]
+custom_minimum_size = Vector2(10, 10)
+modulate = Color(1, 1, 1, 0.18)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_pip")
+
+[node name="Pip5" type="Panel" parent="Overlay/Pips"]
+custom_minimum_size = Vector2(10, 10)
+modulate = Color(1, 1, 1, 0.18)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_pip")
 
 [node name="MusicAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("12_music")
@@ -105,15 +131,11 @@ volume_db = -20.0
 
 [node name="DroneAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("4_drone")
-volume_db = -14.0
+volume_db = -16.0
 
 [node name="HeartbeatAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_heartbeat")
-volume_db = -15.0
-
-[node name="WhisperAudio" type="AudioStreamPlayer" parent="."]
-stream = ExtResource("6_whispers")
-volume_db = -25.0
+volume_db = -16.0
 
 [node name="RelocateAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("7_glitch")

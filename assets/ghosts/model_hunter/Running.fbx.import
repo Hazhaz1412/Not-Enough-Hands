@@ -1,0 +1,61 @@
+[remap]
+
+importer="scene"
+importer_version=1
+type="PackedScene"
+uid="uid://bbljmd0yirof"
+path="res://.godot/imported/Running.fbx-4140b7d42148c7311c414b9c831a233c.scn"
+
+[deps]
+
+source_file="res://assets/ghosts/model_hunter/Running.fbx"
+dest_files=["res://.godot/imported/Running.fbx-4140b7d42148c7311c414b9c831a233c.scn"]
+
+[params]
+
+nodes/root_type=""
+nodes/root_name=""
+nodes/root_script=null
+mesh_library/use_node_names_as_mesh_names=false
+array_mesh/deduplicate_surfaces=true
+nodes/apply_root_scale=true
+nodes/root_scale=1.0
+nodes/import_as_skeleton_bones=false
+nodes/use_name_suffixes=true
+nodes/use_node_type_suffixes=true
+meshes/ensure_tangents=true
+meshes/generate_lods=true
+meshes/create_shadow_meshes=true
+meshes/light_baking=1
+meshes/lightmap_texel_size=0.2
+meshes/force_disable_compression=false
+skins/use_named_skins=true
+animation/import=true
+animation/fps=30
+animation/trimming=true
+animation/remove_immutable_tracks=true
+animation/import_rest_as_RESET=false
+import_script/path=""
+materials/extract=0
+materials/extract_format=0
+materials/extract_path=""
+_subresources={
+"nodes": {
+"PATH:Skeleton3D": {
+"retarget/bone_map": Resource("res://assets/ghosts/model_hunter/mixamo_bone_map.tres"),
+"retarget/bone_renamer/rename_bones": true,
+"retarget/bone_renamer/unique_node/make_unique": false,
+"retarget/rest_fixer/apply_node_transforms": false,
+"retarget/rest_fixer/fix_silhouette/enable": true,
+"retarget/rest_fixer/fix_silhouette/filter": [],
+"retarget/rest_fixer/fix_silhouette/threshold": 15.0,
+"retarget/rest_fixer/keep_global_rest_on_leftovers": true,
+"retarget/rest_fixer/normalize_position_tracks": true,
+"retarget/rest_fixer/reset_all_bone_poses_after_import": true
+}
+}
+}
+fbx/importer=0
+fbx/allow_geometry_helper_nodes=false
+fbx/embedded_image_handling=1
+fbx/naming_version=2

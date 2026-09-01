@@ -1,10 +1,6 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://house3/villa_house.gd" id="1_villa"]
-[ext_resource type="Script" path="res://audio/light_flicker.gd" id="2_light_flicker"]
 
 [node name="VillaHouse" type="Node3D"]
 script = ExtResource("1_villa")
-
-[node name="LightFlicker" type="Node3D" parent="."]
-script = ExtResource("2_light_flicker")

@@ -67,8 +67,25 @@ func _run() -> void:
 		_fail("The crawler death did not receive crawler-specific presentation.")
 		return
 
+	var darkness := current_scene.get_node("DarknessKiller") as Node3D
+	if crawler_death_ui.call("_identify_killer", darkness) != &"darkness":
+		_fail("The Darkness Ghost was not routed to its own jumpscare.")
+		return
+	var visage := crawler_death_ui.get_node("Visage") as Control
+
+	crawler_death_ui.set("killer_variant", &"darkness")
+	crawler_death_ui.call("_configure_copy")
+	if "MA BÓNG TỐI" not in crawler_cause.text:
+		_fail("The Darkness Ghost did not receive darkness-specific Game Over copy.")
+		return
+	visage.call("configure", &"darkness")
+	visage.call("set_scare_progress", 0.75)
+	if visage.get("killer_variant") != &"darkness":
+		_fail("The Darkness Ghost portrait could not be configured.")
+		return
+
 	paused = false
-	print("Death screen smoke test passed: jumpscare, killer variants, Game Over, and full scene reset.")
+	print("Death screen smoke test passed: Darkness, killer variants, Game Over, and full scene reset.")
 	current_scene.queue_free()
 	await process_frame
 	quit()

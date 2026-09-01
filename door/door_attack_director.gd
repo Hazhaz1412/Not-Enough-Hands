@@ -20,7 +20,9 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if not automatic_waves:
+	# One schedule for the whole house. A client's copy of the wave timer would
+	# pick its own doors at its own moments, so it never runs.
+	if not automatic_waves or not WorldNet.is_world_authority():
 		return
 	_wave_timer -= delta
 	if _wave_timer <= 0.0:

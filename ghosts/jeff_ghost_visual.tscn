@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ghosts/jeff_ghost_visual.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/ghosts/model_hunter/jeff_the_killer.glb" id="2_jeff"]
+
+[node name="JeffGhostVisual" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="Model" parent="." instance=ExtResource("2_jeff")]

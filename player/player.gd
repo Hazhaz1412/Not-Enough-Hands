@@ -2,14 +2,20 @@ extends CharacterBody3D
 
 signal eyes_closed_changed(closed: bool)
 signal killed_by_ghost(ghost: Node3D)
+signal downed_changed(downed: bool)
+signal became_spectator()
 signal door_minigame_started(door: Node)
 signal door_minigame_finished()
 signal fusebox_minigame_started(fusebox: Node)
 signal hunter_trap_changed(trapped: bool)
 signal toilet_ghost_stun_changed(active: bool)
 
-@export var walk_speed: float = 4
-@export var crouch_speed: float = 1.75
+@export_category("Multiplayer")
+@export var owner_peer_id: int = 0
+@export var display_name: String = "Player"
+
+@export var walk_speed: float = 6
+@export var crouch_speed: float = 2.75
 @export var sprint_speed_multiplier: float = 2.5
 @export var jump_velocity: float = 4.2
 @export var player_radius: float = 0.32
@@ -27,10 +33,41 @@ signal toilet_ghost_stun_changed(active: bool)
 ## step-up silently fails every frame.
 @export var step_probe_distance: float = 0.3
 
+@export_category("Downed & Revive")
+## Total time this player may ever spend on the floor. It is a run-long budget,
+## not a per-death timer: it never refills, so each rescue costs the team from
+## the same pool and a third trip down is normally the last one.
+@export var downed_time_budget: float = 180.0
+## Flat charge taken from the budget the moment a ghost puts this player down.
+@export var downed_death_cost: float = 60.0
+## Uninterrupted seconds a teammate must hold the interact key to lift them up.
+@export var revive_duration: float = 10.0
+@export var revive_range: float = 2.4
+## How fast an abandoned rescue unwinds, as a multiple of real time.
+@export var revive_decay_multiplier: float = 2.0
+@export var downed_camera_height: float = -0.6
+@export var downed_camera_roll_degrees: float = 18.0
+
 @export_category("Camera Feel")
 @export var head_bob_frequency: float = 8.0
 @export var head_bob_horizontal: float = 0.012
 @export var head_bob_vertical: float = 0.018
+
+@export_category("Hunter Gaze Interference")
+## Looking deliberately at a manifested Hunter corrupts the camera feed. The
+## inner angle is fully affected; the outer angle is a soft shoulder so a tiny
+## mouse movement does not make the post-process pop on and off.
+@export var hunter_gaze_range: float = 28.0
+@export_range(0.5, 15.0, 0.5) var hunter_gaze_full_angle: float = 3.5
+@export_range(1.0, 25.0, 0.5) var hunter_gaze_outer_angle: float = 11.0
+## A nearby wall muffles the signal instead of cutting it perfectly. This range
+## is intentionally short so the leak reads as "right on the other side" and
+## never turns into a general-purpose Hunter detector.
+@export var hunter_gaze_through_wall_range: float = 5.0
+@export_range(0.0, 0.5, 0.01) var hunter_gaze_through_wall_strength: float = 0.2
+@export var hunter_gaze_fade_in_speed: float = 7.5
+@export var hunter_gaze_fade_out_speed: float = 5.0
+@export_flags_3d_physics var hunter_gaze_blocking_mask: int = 1
 
 @export_category("Movement Audio")
 @export var walk_step_interval: float = 0.48
@@ -54,6 +91,13 @@ var current_stamina: float = max_stamina
 var head_bob_time: float = 0.0
 var eyes_closed: bool = false
 var is_alive: bool = true
+## Downed players are deliberately not alive: every ghost's target scan already
+## skips `is_alive == false`, so going down removes this player from all three
+## of them without adding a fourth condition to each ghost.
+var is_downed: bool = false
+var is_spectator: bool = false
+var downed_time_remaining: float = 180.0
+var revive_progress: float = 0.0
 var blink_time_remaining: float = blink_interval
 var forced_blink_remaining: float = 0.0
 ## Highest threat currently reported by any ghost - drives the horror overlay
@@ -61,6 +105,7 @@ var forced_blink_remaining: float = 0.0
 ## parameter and the camera code already read it.
 var statue_threat: float = 0.0
 var threat_sources: Dictionary = {}
+var hunter_gaze_strength: float = 0.0
 var eyelid_closure: float = 0.0
 @export var mouse_sensitivity: float = 0.002
 @export var max_interaction_range: float = 10.0
@@ -80,8 +125,8 @@ var _toilet_ghost_present: bool = false
 var _flashlight_base_energy: float = 0.0
 var _flashlight_base_range: float = 0.0
 
-## Temporary look-around constraint a minigame can impose (currently only
-## ToiletMinigame) - false/full-range outside any minigame, so normal
+## Temporary look-around constraint a minigame can impose (ToiletMinigame and
+## DoorGhostMinigame) - false/full-range outside any minigame, so normal
 ## mouse-look is unaffected. yaw is clamped via an accumulator (rotate_y()
 ## itself has no absolute angle to read back) while pitch is clamped
 ## directly on camera_pivot.rotation.x like the un-constrained case already
@@ -113,8 +158,9 @@ var hunter_trap_source: Node3D
 @onready var blink_bar: ProgressBar = $BlinkUI/BlinkContainer/VBoxContainer/BlinkBar
 @onready var horror_overlay_rect: ColorRect = $HorrorOverlay/VignetteAndGrain
 @onready var death_ui: CanvasLayer = $DeathUI
+@onready var jumpscare: JumpscareController = $Jumpscare
 @onready var footstep_players: Array[AudioStreamPlayer3D] = [$FootstepA, $FootstepB]
-@onready var door_minigame: CanvasLayer = get_node_or_null("DoorGhostMinigame") as CanvasLayer
+@onready var door_minigame: Node3D = get_node_or_null("DoorGhostMinigame") as Node3D
 @onready var fusebox_minigame: CanvasLayer = get_node_or_null("FuseboxMinigame") as CanvasLayer
 @onready var equipment: PlayerEquipment = $Equipment
 @onready var bladder: PlayerBladder = $Bladder
@@ -124,6 +170,10 @@ var hunter_trap_source: Node3D
 ## DoorGhostMinigame, since only one toilet can ever be occupied by this
 ## player at a time.
 var _active_toilet_minigame: Node = null
+
+## Same arrangement for BreakerMinigame, which lives per-breaker.
+var _active_breaker_minigame: Node = null
+var _pending_hunter_killer: Node3D = null
 
 var _minigame_ghost_safety_locks: int = 0
 var _minigame_ghost_release_remaining: float = 0.0
@@ -161,37 +211,184 @@ var _footstep_rng := RandomNumberGenerator.new()
 # Get the gravity from the project settings to be synced with RigidBody nodes.
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
+const NETWORK_STATE_INTERVAL := 1.0 / 20.0
+const NETWORK_SERVER_PEER_ID := 1
+
+## What an encounter played on somebody's own machine reports back to the door.
+enum DoorOutcome {
+	CLEARED,
+	FAILED,
+	CANCELLED,
+}
+
+## The only three methods a handed-over encounter may re-enter on the owner's
+## machine. The RPC that carries one is authority-only, but naming them here
+## keeps it a fixed list rather than "whatever the server asks for".
+const REMOTE_ENCOUNTER_STARTERS: Array[StringName] = [
+	&"start_door_minigame",
+	&"start_breaker_minigame",
+	&"start_toilet_minigame",
+]
+
+## What this player is away at while the encounter is played on their own
+## machine. Set only on the peer holding the *replica* - which is the server -
+## and null everywhere the encounter is actually being played.
+var _remote_encounter_target: Node = null
+
+var _network_move := Vector2.ZERO
+var _network_jump: bool = false
+var _network_crouch: bool = false
+var _network_run: bool = false
+var _network_blink: bool = false
+## Held rather than pressed: reviving a teammate is the one interaction that
+## needs the key's continuous state on the server, not a single edge.
+var _network_interact: bool = false
+var _previous_network_jump: bool = false
+var _network_yaw: float = 0.0
+var _network_pitch: float = 0.0
+var _state_sync_remaining: float = 0.0
+var _snapshot_position := Vector3.ZERO
+var _snapshot_yaw: float = 0.0
+var _snapshot_pitch: float = 0.0
+var _snapshot_velocity := Vector3.ZERO
+var _has_network_snapshot: bool = false
+
 func _ready() -> void:
+	# Interior doors query this group for a light physical push. Keeping the
+	# lookup on the door means player movement needs no door-specific branches.
+	add_to_group(&"players")
 	_footstep_rng.randomize()
 	current_stamina = max_stamina
+	downed_time_remaining = downed_time_budget
 	blink_time_remaining = blink_interval
 	var shape := collision_shape.shape as CapsuleShape3D
 	shape.radius = player_radius
 	shape.height = standing_height
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_network_yaw = rotation.y
+	_network_pitch = camera_pivot.rotation.x
+	_configure_player_presentation()
+	if is_local_player() and DisplayServer.get_name() != "headless":
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if interact_ray:
 		interact_ray.target_position = Vector3(0, 0, -max_interaction_range)
 	if flashlight:
 		_flashlight_base_energy = flashlight.light_energy
 		_flashlight_base_range = flashlight.spot_range
+	if jumpscare:
+		jumpscare.jumpscare_finished.connect(_on_hunter_jumpscare_finished)
 
 
 ## Status visuals keep ticking while a minigame temporarily disables this
 ## body's physics. That makes a seven-second Toilet Ghost stun seven seconds
 ## of real gameplay time, including the brief camera-release transition.
 func _process(delta: float) -> void:
-	_update_toilet_ghost_stun(delta)
+	if not _is_network_session() or multiplayer.is_server() or is_local_player():
+		_update_toilet_ghost_stun(delta)
+	if is_local_player():
+		_update_hunter_gaze_interference(delta)
+
+
+## This is intentionally a local camera check rather than part of the Hunter's
+## server-side AI. Each player can be looking in a different direction, and the
+## replicated Hunter body already gives every client all the geometry needed to
+## decide what their own camera can see.
+func _update_hunter_gaze_interference(delta: float) -> void:
+	var target_strength := _hunter_gaze_target_strength()
+	var speed := hunter_gaze_fade_in_speed \
+		if target_strength > hunter_gaze_strength else hunter_gaze_fade_out_speed
+	hunter_gaze_strength = move_toward(
+		hunter_gaze_strength,
+		target_strength,
+		maxf(speed, 0.0) * delta
+	)
+	var overlay_material := horror_overlay_rect.material as ShaderMaterial
+	if overlay_material:
+		overlay_material.set_shader_parameter("hunter_gaze_strength", hunter_gaze_strength)
+
+
+func _hunter_gaze_target_strength() -> float:
+	if dev_clear_vision or not is_alive or eyes_closed or hunter_gaze_range <= 0.0:
+		return 0.0
+	var camera := camera_pivot.get_node_or_null("Camera3D") as Camera3D
+	if not camera or not camera.current:
+		return 0.0
+
+	var forward := -camera.global_basis.z.normalized()
+	var full_angle := deg_to_rad(minf(hunter_gaze_full_angle, hunter_gaze_outer_angle))
+	var outer_angle := deg_to_rad(maxf(hunter_gaze_full_angle, hunter_gaze_outer_angle))
+	outer_angle = maxf(outer_angle, full_angle + 0.0001)
+	var strongest := 0.0
+	for node: Node in get_tree().get_nodes_in_group(&"hunter_ghosts"):
+		var hunter := node as Node3D
+		if not _is_visible_hunter(hunter):
+			continue
+		# Aim at the torso instead of the feet: it matches both the collision
+		# capsule and the part of the silhouette the player naturally centres.
+		var target_point := hunter.global_position + Vector3.UP * 1.05
+		var offset := target_point - camera.global_position
+		var distance := offset.length()
+		if distance <= 0.001 or distance > hunter_gaze_range:
+			continue
+		if _hunter_gaze_is_blocked(camera.global_position, target_point):
+			if hunter_gaze_through_wall_range <= 0.0 \
+				or distance > hunter_gaze_through_wall_range:
+				continue
+			var wall_proximity := 1.0 - smoothstep(
+				hunter_gaze_through_wall_range * 0.35,
+				hunter_gaze_through_wall_range,
+				distance
+			)
+			strongest = maxf(
+				strongest,
+				wall_proximity * hunter_gaze_through_wall_strength
+			)
+			continue
+
+		var angle := acos(clampf(forward.dot(offset / distance), -1.0, 1.0))
+		if angle >= outer_angle or not camera.is_position_in_frustum(target_point):
+			continue
+		var angle_strength := 1.0 - smoothstep(full_angle, outer_angle, angle)
+		# Full strength through the close half of the range, then taper out so a
+		# tiny far-away silhouette whispers static rather than flooding the frame.
+		var distance_strength := 1.0 - smoothstep(
+			hunter_gaze_range * 0.5,
+			hunter_gaze_range,
+			distance
+		)
+		strongest = maxf(strongest, angle_strength * distance_strength)
+	return clampf(strongest, 0.0, 1.0)
+
+
+func _is_visible_hunter(hunter: Node3D) -> bool:
+	if not is_instance_valid(hunter) or not hunter.visible:
+		return false
+	if "manifested" in hunter and not bool(hunter.get("manifested")):
+		return false
+	var body := hunter.get_node_or_null("VisualRoot") as Node3D
+	return body == null or body.visible
+
+
+func _hunter_gaze_is_blocked(from: Vector3, to: Vector3) -> bool:
+	var query := PhysicsRayQueryParameters3D.create(
+		from,
+		to,
+		hunter_gaze_blocking_mask,
+		[get_rid()]
+	)
+	return not get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not is_alive:
+	if not is_local_player():
+		return
+	# Being down or spectating is not the same as being finished: both still
+	# get to look around, they just lose everything below the look block.
+	if not is_alive and not is_downed and not is_spectator:
 		return
 	if _is_alt_toggle_event(event):
 		toggle_mouse_capture()
 		get_viewport().set_input_as_handled()
 		return
-	if is_door_minigame_active():
-		return
-
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		# Rotate player horizontally - clamped to a limited look-around
 		# window while yaw_clamp_active (e.g. ToiletMinigame), full range
@@ -208,22 +405,302 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera_pivot.rotate_x(-event.relative.y * mouse_sensitivity)
 		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, pitch_clamp_min, pitch_clamp_max)
 
-	if is_any_minigame_active():
+	# A body on the floor cannot reach a door handle, and a spectator has no
+	# body at all - looking is where their input stops.
+	if is_downed or is_spectator:
+		return
+
+	if _is_any_minigame_active():
 		return
 
 	if event.is_action_pressed("interact"):
-		_try_interact()
+		if _is_network_client():
+			_request_interact.rpc_id(NETWORK_SERVER_PEER_ID)
+		else:
+			_try_interact()
 	if event.is_action_pressed("drop_item"):
-		_drop_selected_item()
+		if _is_network_client():
+			_request_drop_item.rpc_id(NETWORK_SERVER_PEER_ID)
+		else:
+			_drop_selected_item()
 	if event.is_action_pressed("select_slot_1"):
-		equipment.select_slot(0)
+		_request_or_select_slot(0)
 	if event.is_action_pressed("select_slot_2"):
-		equipment.select_slot(1)
+		_request_or_select_slot(1)
 	if event is InputEventMouseButton and event.pressed:
 		# Only 2 slots exist, so "next" and "previous" are both just "the
 		# other slot" - same select_slot() the keyboard shortcuts use.
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			equipment.select_slot(1 - equipment.selected_slot)
+			_request_or_select_slot(1 - equipment.selected_slot)
+
+
+func is_local_player() -> bool:
+	if not _is_network_session() or owner_peer_id <= 0:
+		return true
+	return multiplayer.get_unique_id() == owner_peer_id
+
+
+func _configure_player_presentation() -> void:
+	var local := is_local_player()
+	var camera := camera_pivot.get_node_or_null("Camera3D") as Camera3D
+	if camera:
+		camera.current = local
+	# The server keeps InteractRay active for authoritative range checks; remote
+	# clients need neither the ray nor any of this player's full-screen UI.
+	if interact_ray:
+		interact_ray.enabled = local or multiplayer.is_server()
+	for node_name: StringName in [
+		&"HorrorOverlay",
+		&"InteractionUI",
+		&"StatusUI",
+		&"EquipmentUI",
+		&"BlinkUI",
+		&"BlinkOverlay",
+		&"DoorGhostMinigame",
+		&"DownedUI",
+		&"DeathUI",
+	]:
+		var layer := get_node_or_null(NodePath(node_name)) as CanvasLayer
+		# Local UI nodes own their initial visibility (DeathUI and minigames
+		# deliberately start hidden). Only remote players need a forced hide.
+		if layer and not local:
+			layer.visible = false
+	set_process_unhandled_input(local)
+
+
+func _is_network_session() -> bool:
+	var manager := get_node_or_null("/root/NetworkManager")
+	return manager != null and bool(manager.get("session_active"))
+
+
+func _is_network_client() -> bool:
+	return _is_network_session() and not multiplayer.is_server()
+
+
+## True on a headless process that owns peer 1 without being a player.
+func _is_dedicated_server() -> bool:
+	var manager := get_node_or_null("/root/NetworkManager")
+	return manager != null and bool(manager.get("dedicated_server"))
+
+
+func _capture_and_send_network_input() -> void:
+	var move := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	var jump := Input.is_action_pressed("jump")
+	var crouch := Input.is_action_pressed("crouch")
+	var run_pressed := Input.is_action_pressed("run")
+	var blink_pressed := Input.is_action_pressed("blink")
+	var interact_held := Input.is_action_pressed("interact")
+	var yaw := rotation.y
+	var pitch := camera_pivot.rotation.x
+	if multiplayer.is_server():
+		_apply_network_input(
+			move,
+			jump,
+			crouch,
+			run_pressed,
+			blink_pressed,
+			interact_held,
+			yaw,
+			pitch
+		)
+	else:
+		_submit_network_input.rpc_id(
+			NETWORK_SERVER_PEER_ID,
+			move,
+			jump,
+			crouch,
+			run_pressed,
+			blink_pressed,
+			interact_held,
+			yaw,
+			pitch
+		)
+
+
+@rpc("any_peer", "call_remote", "unreliable_ordered", 1)
+func _submit_network_input(
+	move: Vector2,
+	jump: bool,
+	crouch: bool,
+	run_pressed: bool,
+	blink_pressed: bool,
+	interact_held: bool,
+	yaw: float,
+	pitch: float
+) -> void:
+	if not multiplayer.is_server() or not _rpc_sender_owns_player():
+		return
+	if not is_finite(yaw) or not is_finite(pitch):
+		return
+	_apply_network_input(
+		move,
+		jump,
+		crouch,
+		run_pressed,
+		blink_pressed,
+		interact_held,
+		yaw,
+		pitch
+	)
+
+
+func _apply_network_input(
+	move: Vector2,
+	jump: bool,
+	crouch: bool,
+	run_pressed: bool,
+	blink_pressed: bool,
+	interact_held: bool,
+	yaw: float,
+	pitch: float
+) -> void:
+	_network_move = move.limit_length(1.0)
+	_network_jump = jump
+	_network_crouch = crouch
+	_network_run = run_pressed
+	_network_blink = blink_pressed
+	_network_interact = interact_held
+	_network_yaw = wrapf(yaw, -PI, PI)
+	_network_pitch = clampf(pitch, -PI * 0.5, PI * 0.5)
+
+
+func _movement_input() -> Vector2:
+	if _is_network_session() and multiplayer.is_server():
+		return _network_move
+	return Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+
+
+func _input_action_pressed(action: StringName) -> bool:
+	if _is_network_session() and multiplayer.is_server():
+		match action:
+			&"jump":
+				return _network_jump
+			&"crouch":
+				return _network_crouch
+			&"run":
+				return _network_run
+			&"blink":
+				return _network_blink
+			&"interact":
+				return _network_interact
+	return Input.is_action_pressed(action)
+
+
+func _input_action_just_pressed(action: StringName) -> bool:
+	if _is_network_session() and multiplayer.is_server() and action == &"jump":
+		return _network_jump and not _previous_network_jump
+	return Input.is_action_just_pressed(action)
+
+
+func _finish_network_tick(delta: float) -> void:
+	if not _is_network_session() or not multiplayer.is_server():
+		return
+	_previous_network_jump = _network_jump
+	_state_sync_remaining -= delta
+	if _state_sync_remaining > 0.0:
+		return
+	_state_sync_remaining += NETWORK_STATE_INTERVAL
+	# Reached through the tree rather than by name: an autoload's identifier
+	# only resolves once the project's main loop is running, and this script is
+	# compiled as a dependency by the `--script` smoke tests, which have none.
+	var manager := get_node_or_null("/root/NetworkManager")
+	if manager == null:
+		return
+	for ready_peer: int in manager.get("replication_ready_peers"):
+		if ready_peer == NETWORK_SERVER_PEER_ID:
+			continue
+		_send_network_state(ready_peer)
+
+
+func _send_network_state(peer_id: int) -> void:
+	_receive_network_state.rpc_id(
+		peer_id,
+		global_position,
+		rotation.y,
+		camera_pivot.rotation.x,
+		velocity,
+		is_crouching,
+		is_alive,
+		current_stamina,
+		eyes_closed,
+		blink_time_remaining,
+		eyelid_closure,
+		is_downed,
+		is_spectator,
+		downed_time_remaining,
+		revive_progress
+	)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 2)
+func _receive_network_state(
+	server_position: Vector3,
+	server_yaw: float,
+	server_pitch: float,
+	server_velocity: Vector3,
+	server_crouching: bool,
+	server_alive: bool,
+	server_stamina: float,
+	server_eyes_closed: bool,
+	server_blink_remaining: float,
+	server_eyelid_closure: float,
+	server_downed: bool,
+	server_spectator: bool,
+	server_downed_remaining: float,
+	server_revive_progress: float
+) -> void:
+	if multiplayer.is_server():
+		return
+	_snapshot_position = server_position
+	_snapshot_yaw = server_yaw
+	_snapshot_pitch = server_pitch
+	_snapshot_velocity = server_velocity
+	is_alive = server_alive
+	downed_time_remaining = server_downed_remaining
+	revive_progress = server_revive_progress
+	if server_downed != is_downed:
+		is_downed = server_downed
+		downed_changed.emit(is_downed)
+	if server_spectator and not is_spectator:
+		_enter_spectator()
+	current_stamina = clampf(server_stamina, 0.0, max_stamina)
+	eyes_closed = server_eyes_closed
+	blink_time_remaining = server_blink_remaining
+	eyelid_closure = server_eyelid_closure
+	if server_crouching != is_crouching:
+		if server_crouching:
+			_crouch()
+		else:
+			_stand_up()
+	if not _has_network_snapshot:
+		global_position = server_position
+		rotation.y = server_yaw
+		if not is_local_player():
+			camera_pivot.rotation.x = server_pitch
+		_has_network_snapshot = true
+
+
+func _interpolate_network_snapshot(delta: float) -> void:
+	if not _has_network_snapshot:
+		return
+	var distance := global_position.distance_to(_snapshot_position)
+	if distance > 3.0:
+		global_position = _snapshot_position
+	else:
+		global_position = global_position.lerp(_snapshot_position, minf(delta * 14.0, 1.0))
+	if not is_local_player():
+		rotation.y = lerp_angle(rotation.y, _snapshot_yaw, minf(delta * 16.0, 1.0))
+		camera_pivot.rotation.x = lerpf(
+			camera_pivot.rotation.x,
+			_snapshot_pitch,
+			minf(delta * 16.0, 1.0)
+		)
+	velocity = _snapshot_velocity
+	if is_local_player():
+		_update_camera_motion(delta)
+		var eyelid_material := blink_overlay.material as ShaderMaterial
+		if eyelid_material:
+			eyelid_material.set_shader_parameter("closure", eyelid_closure)
 
 
 func toggle_mouse_capture() -> void:
@@ -281,8 +758,57 @@ func can_interact_with(target: Node) -> bool:
 func _try_interact() -> void:
 	interact_ray.force_raycast_update()
 	var target := get_interaction_target()
-	if target and can_interact_with(target):
+	if not target or not can_interact_with(target):
+		return
+	target.interact(self)
+	# Only the server ever reaches this function - a client's E is an RPC - so a
+	# press whose whole effect is local geometry (a door leaf swinging, a switch
+	# flipping a circuit) would happen on the server and nowhere else. Those
+	# targets say so by joining `replicated_interactions`; the ones with their
+	# own network path, a defense door and the breaker, deliberately do not.
+	if _is_network_session() \
+		and multiplayer.is_server() \
+		and target.is_in_group(&"replicated_interactions"):
+		_echo_interaction.rpc(_scene_path_of(target))
+
+
+## Replays the press on every other peer, through the same public `interact()`
+## the server just called. `self` is this player's replica on the receiving
+## machine, so a door still swings away from the person who opened it.
+@rpc("authority", "call_remote", "reliable")
+func _echo_interaction(target_path: NodePath) -> void:
+	var target := _scene_node(target_path)
+	if target and target.has_method("interact"):
 		target.interact(self)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _request_interact() -> void:
+	if multiplayer.is_server() and _rpc_sender_owns_player():
+		_try_interact()
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _request_drop_item() -> void:
+	if multiplayer.is_server() and _rpc_sender_owns_player():
+		_drop_selected_item()
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _request_select_slot(slot_index: int) -> void:
+	if multiplayer.is_server() and _rpc_sender_owns_player() and slot_index in [0, 1]:
+		equipment.select_slot(slot_index)
+
+
+func _request_or_select_slot(slot_index: int) -> void:
+	if _is_network_client():
+		_request_select_slot.rpc_id(NETWORK_SERVER_PEER_ID, slot_index)
+	else:
+		equipment.select_slot(slot_index)
+
+
+func _rpc_sender_owns_player() -> bool:
+	return multiplayer.get_remote_sender_id() == owner_peer_id
 
 
 ## Called by a PickupItem's own script when its Interactable fires - mirrors
@@ -316,22 +842,66 @@ func _drop_selected_item() -> void:
 		item.set_held(false)
 
 
+## Hands `item` back to the world so a consumer can do something with it - the
+## totem brazier uses it to take the totem out of the player's hands before it
+## burns it. Mirrors try_pick_up_item(): the consumer calls into the player,
+## never into the equipment slots. Returns false if it was not being carried.
+func release_held_item(item: Node3D) -> bool:
+	if not is_instance_valid(item) or not equipment.remove_item(item):
+		return false
+	item.reparent(get_tree().root)
+	item.global_position = global_position + Vector3(0, standing_camera_height, 0)
+	if item.has_method("set_held"):
+		item.set_held(false)
+	return true
+
+
 func _physics_process(delta: float) -> void:
+	if _is_network_session():
+		if not multiplayer.is_server():
+			if is_local_player():
+				_capture_and_send_network_input()
+				# Blink is a first-person visual, so the owner animates it without
+				# waiting a round-trip while the same held state goes to the server.
+				_update_blink(delta)
+			_interpolate_network_snapshot(delta)
+			return
+		if owner_peer_id == NETWORK_SERVER_PEER_ID and not _is_dedicated_server():
+			_capture_and_send_network_input()
+		rotation.y = _network_yaw
+		camera_pivot.rotation.x = _network_pitch
+
+	if is_spectator:
+		_fly(delta)
+		_finish_network_tick(delta)
+		return
+
+	if is_downed:
+		_update_downed(delta)
+		_settle_downed_body(delta)
+		_update_camera_motion(delta)
+		_stop_footsteps()
+		_finish_network_tick(delta)
+		return
+
 	_update_minigame_ghost_safety(delta)
-	if is_any_minigame_active():
+	if _is_any_minigame_active():
 		_open_eyes_for_minigame()
 		velocity = Vector3.ZERO
 		_stop_footsteps()
+		_finish_network_tick(delta)
 		return
 
 	_update_blink(delta)
 	if not is_alive:
 		velocity = Vector3.ZERO
 		_stop_footsteps()
+		_finish_network_tick(delta)
 		return
 
 	if dev_noclip:
 		_fly(delta)
+		_finish_network_tick(delta)
 		return
 
 	var was_on_floor := is_on_floor()
@@ -344,6 +914,7 @@ func _physics_process(delta: float) -> void:
 			velocity.y = 0.0
 		move_and_slide()
 		_stop_footsteps()
+		_finish_network_tick(delta)
 		return
 
 	# Add the gravity.
@@ -351,7 +922,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= gravity * delta
 
 	# Handle Jump
-	if Input.is_action_just_pressed("jump") and is_on_floor():
+	if _input_action_just_pressed(&"jump") and is_on_floor():
 		if is_crouching:
 			if _can_stand():
 				_stand_up()
@@ -360,7 +931,7 @@ func _physics_process(delta: float) -> void:
 			velocity.y = jump_velocity
 
 	# Handle Crouch
-	if Input.is_action_pressed("crouch"):
+	if _input_action_pressed(&"crouch"):
 		if not is_crouching:
 			_crouch()
 	else:
@@ -370,11 +941,11 @@ func _physics_process(delta: float) -> void:
 
 	# Get the input direction and handle the movement/deceleration.
 	# Input.get_vector automatically normalizes diagonal input
-	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	var input_dir := _movement_input()
 	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 	
 	var is_sprinting = false
-	if direction != Vector3.ZERO and Input.is_action_pressed("run") and current_stamina > 0.0 and not is_crouching:
+	if direction != Vector3.ZERO and _input_action_pressed(&"run") and current_stamina > 0.0 and not is_crouching:
 		is_sprinting = true
 
 	var current_speed = walk_speed
@@ -414,11 +985,12 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_update_footsteps(delta, is_sprinting)
+	_finish_network_tick(delta)
 
 
 func _update_blink(delta: float) -> void:
 	var was_closed := eyes_closed
-	var manual_close := Input.is_action_pressed('blink') and is_alive
+	var manual_close := _input_action_pressed(&"blink") and is_alive
 
 	if manual_close:
 		eyes_closed = true
@@ -532,6 +1104,16 @@ func set_threat_from(source: StringName, amount: float) -> void:
 		overlay_material.set_shader_parameter('threat_strength', statue_threat)
 
 
+## Drives the post-process grade in ui/horror_overlay.gdshader between the
+## house as it normally plays (0) and something about to reach the player (1).
+## Owned here for the same reason threat is: the overlay belongs to the player,
+## and whatever is frightening them reports in rather than reaching for it.
+func set_danger_intensity(amount: float) -> void:
+	var overlay_material := horror_overlay_rect.material as ShaderMaterial
+	if overlay_material:
+		overlay_material.set_shader_parameter("danger_intensity", clampf(amount, 0.0, 1.0))
+
+
 func kill_by_ghost(ghost: Node3D) -> void:
 	if not is_alive or is_protected_from_ghost_attacks():
 		return
@@ -540,12 +1122,201 @@ func kill_by_ghost(ghost: Node3D) -> void:
 	eyes_closed = false
 	velocity = Vector3.ZERO
 	_stop_footsteps()
+	# Alone, a kill is still a kill and the jumpscare/game-over runs as before.
+	# With a teammate left standing it becomes a rescue window instead.
+	if _has_available_rescuer():
+		_enter_downed()
+	else:
+		_present_death(ghost)
+	killed_by_ghost.emit(ghost)
+
+
+## The jumpscare, the game-over screen and the pause that comes with them are
+## first-person, so they belong on the machine of the player who died.
+##
+## Ghosts run on the server, which means a kill lands on a *replica* there. Left
+## as it was, a hunter catching one player played that player's death on the
+## host's screen and paused the server's tree - freezing the night for everyone
+## while the person who actually died saw nothing.
+func _present_death(ghost: Node3D) -> void:
+	if _encounter_belongs_elsewhere():
+		_show_death.rpc_id(owner_peer_id, _scene_path_of(ghost))
+		return
+	if _start_hunter_jumpscare(ghost):
+		return
 	if death_ui.has_method("show_jumpscare"):
 		death_ui.call("show_jumpscare", ghost)
 	else:
 		death_ui.visible = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	killed_by_ghost.emit(ghost)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _show_death(ghost_path: NodePath) -> void:
+	if not is_local_player():
+		return
+	# is_alive also arrives in the next state packet; setting it here keeps the
+	# screen and the body from disagreeing for the frame in between.
+	is_alive = false
+	_present_death(_scene_node(ghost_path) as Node3D)
+
+
+func _start_hunter_jumpscare(ghost: Node3D) -> bool:
+	if not is_instance_valid(ghost) or not jumpscare:
+		return false
+	if not ghost.is_in_group("hunter_ghosts") \
+			and "hunter" not in ghost.name.to_lower():
+		return false
+	_pending_hunter_killer = ghost
+	if not jumpscare.play_jumpscare(self):
+		_pending_hunter_killer = null
+		return false
+	var active_scene := get_tree().current_scene
+	if active_scene and active_scene.is_ancestor_of(self):
+		get_tree().paused = true
+	return true
+
+
+## The controller emits this for every jumpscare it plays, and cancel() emits it
+## too - a run that was cut short is not a death. Only one that came through
+## _start_hunter_jumpscare() has a killer waiting, so only that one raises the
+## Game Over; without the guard a killer-less finish raised one anyway, and
+## death_screen.gd captions a null killer as the statue.
+func _on_hunter_jumpscare_finished() -> void:
+	var killer := _pending_hunter_killer
+	_pending_hunter_killer = null
+	if killer == null:
+		return
+	if death_ui.has_method("show_game_over"):
+		death_ui.call("show_game_over", killer)
+	elif death_ui.has_method("show_jumpscare"):
+		death_ui.call("show_jumpscare", killer)
+
+
+## A rescuer has to be able to walk over here: anyone already on the floor or
+## watching as a spectator cannot pick this player up.
+func _has_available_rescuer() -> bool:
+	for node: Node in get_tree().get_nodes_in_group(&"players"):
+		var other := node as CharacterBody3D
+		if other == self or not is_instance_valid(other):
+			continue
+		if bool(other.get("is_alive")) \
+			and not bool(other.get("is_downed")) \
+			and not bool(other.get("is_spectator")):
+			return true
+	return false
+
+
+func _enter_downed() -> void:
+	# The 60-second charge lands before the clock starts, so a player who is
+	# already near the end of their budget goes straight past the floor.
+	downed_time_remaining = maxf(downed_time_remaining - downed_death_cost, 0.0)
+	if downed_time_remaining <= 0.0:
+		_enter_spectator()
+		return
+	is_downed = true
+	revive_progress = 0.0
+	# _update_blink() no longer runs from here on, so a player caught mid-blink
+	# would lie there behind shut eyelids - the one thing being downed is not
+	# supposed to take away. end_forced_blink() clears the shader directly.
+	end_forced_blink()
+	_clear_all_ghost_threat()
+	downed_changed.emit(true)
+
+
+func _enter_spectator() -> void:
+	if is_spectator:
+		return
+	is_alive = false
+	is_downed = false
+	is_spectator = true
+	downed_time_remaining = 0.0
+	revive_progress = 0.0
+	velocity = Vector3.ZERO
+	# Same reasoning as dev noclip: disable the shape, not the layers, so a
+	# spectator can drift through the house without shoving anything.
+	collision_shape.disabled = true
+	end_forced_blink()
+	_clear_all_ghost_threat()
+	_stop_footsteps()
+	downed_changed.emit(false)
+	became_spectator.emit()
+
+
+## Server-side (or offline) tick for a body on the floor. Written from the
+## downed player's side rather than the rescuer's so the outcome cannot depend
+## on which of the two nodes `_physics_process` happens to reach first.
+func _update_downed(delta: float) -> void:
+	var rescuer := _find_reviver()
+	if rescuer:
+		revive_progress = minf(revive_progress + delta, revive_duration)
+		if revive_progress >= revive_duration:
+			revive()
+		# The bleed-out clock is paused for as long as somebody is holding on.
+		return
+
+	revive_progress = maxf(revive_progress - delta * revive_decay_multiplier, 0.0)
+	downed_time_remaining = maxf(downed_time_remaining - delta, 0.0)
+	if downed_time_remaining <= 0.0:
+		_enter_spectator()
+
+
+## Gravity only, so a player dropped part-way up a staircase ends up lying on
+## the floor a teammate can actually reach.
+func _settle_downed_body(delta: float) -> void:
+	velocity.x = 0.0
+	velocity.z = 0.0
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	elif velocity.y < 0.0:
+		velocity.y = 0.0
+	move_and_slide()
+
+
+func _find_reviver() -> CharacterBody3D:
+	for node: Node in get_tree().get_nodes_in_group(&"players"):
+		var other := node as CharacterBody3D
+		if other == self or not is_instance_valid(other):
+			continue
+		if bool(other.call("can_revive", self)) and bool(other.call("is_holding_interact")):
+			return other
+	return null
+
+
+## True while this player is close enough and able to lift `target` - also what
+## the downed HUD reads to show the rescue prompt.
+func can_revive(target: Node) -> bool:
+	if not is_alive or is_downed or is_spectator or _is_any_minigame_active():
+		return false
+	var body := target as Node3D
+	if not is_instance_valid(body) or not ("is_downed" in body and body.is_downed):
+		return false
+	return global_position.distance_to(body.global_position) <= revive_range
+
+
+func is_holding_interact() -> bool:
+	return _input_action_pressed(&"interact")
+
+
+func revive() -> void:
+	if not is_downed:
+		return
+	is_downed = false
+	is_alive = true
+	revive_progress = 0.0
+	# Back up with nothing left in the tank: the rescue is a reprieve, not a
+	# reset, and the downed budget itself is never refilled.
+	current_stamina = 0.0
+	blink_time_remaining = blink_interval
+	downed_changed.emit(false)
+
+
+func get_downed_time_ratio() -> float:
+	return clampf(downed_time_remaining / maxf(downed_time_budget, 0.01), 0.0, 1.0)
+
+
+func get_revive_ratio() -> float:
+	return clampf(revive_progress / maxf(revive_duration, 0.01), 0.0, 1.0)
 
 
 ## Public status-effect API used by the Toilet Ghost minigame. Reapplying the
@@ -623,11 +1394,19 @@ func set_toilet_ghost_presence(present: bool) -> void:
 func start_door_minigame(door: Node) -> bool:
 	if not is_alive \
 		or not door_minigame \
-		or is_any_minigame_active() \
+		or _is_any_minigame_active() \
 		or not is_instance_valid(door):
 		return false
 	if not door.has_method("begin_exorcism") or not bool(door.call("begin_exorcism")):
 		return false
+	# The encounter is aimed with a flashlight through this player's camera, so
+	# it can only be played where that camera is. On the server another player's
+	# node is a replica - no current camera, HUD force-hidden - so the door is
+	# claimed here and the encounter itself is sent to the machine that pressed E.
+	if _encounter_belongs_elsewhere():
+		_hand_encounter_to_owner(door, &"start_door_minigame")
+		door_minigame_started.emit(door)
+		return true
 	if not door_minigame.has_method("start") or not bool(door_minigame.call("start", self, door)):
 		door.call("cancel_exorcism")
 		return false
@@ -644,7 +1423,7 @@ func is_door_minigame_active() -> bool:
 func start_fusebox_minigame(fusebox: Node) -> bool:
 	if not is_alive \
 		or not fusebox_minigame \
-		or is_any_minigame_active() \
+		or _is_any_minigame_active() \
 		or not is_instance_valid(fusebox):
 		return false
 	if not fusebox_minigame.has_method("start") or not bool(fusebox_minigame.call("start", self, fusebox)):
@@ -667,11 +1446,15 @@ func is_fusebox_minigame_active() -> bool:
 ## than pre-instantiated per-player, so it's resolved from `toilet` here and
 ## the reference kept only for as long as this player's session lasts.
 func start_toilet_minigame(toilet: Node) -> bool:
-	if not is_alive or is_any_minigame_active() or not is_instance_valid(toilet):
+	if not is_alive or _is_any_minigame_active() or not is_instance_valid(toilet):
 		return false
 	var minigame: Node = toilet.get_node_or_null("ToiletMinigame")
 	if not minigame or not minigame.has_method("start"):
 		return false
+	# Same reason as the door: it is played through this player's camera.
+	if _encounter_belongs_elsewhere():
+		_hand_encounter_to_owner(toilet, &"start_toilet_minigame")
+		return true
 	if not bool(minigame.call("start", self, toilet)):
 		return false
 	_active_toilet_minigame = minigame
@@ -684,13 +1467,137 @@ func is_toilet_minigame_active() -> bool:
 		and bool(_active_toilet_minigame.call("is_running"))
 
 
+## Called by MainBreaker's own script when its Interactable fires - the same
+## per-object arrangement as start_toilet_minigame(), since BreakerMinigame is
+## a child of the cabinet rather than a fixed child of Player.
+func start_breaker_minigame(breaker: Node) -> bool:
+	if not is_alive or _is_any_minigame_active() or not is_instance_valid(breaker):
+		return false
+	var minigame: Node = breaker.get_node_or_null("BreakerMinigame")
+	if not minigame or not minigame.has_method("start"):
+		return false
+	# Same reason as the door: the wheel is drawn and timed on the machine of
+	# whoever opened the cabinet. Without this a client's E opened an invisible
+	# countdown on a headless server and left the breaker locked forever.
+	if _encounter_belongs_elsewhere():
+		_hand_encounter_to_owner(breaker, &"start_breaker_minigame")
+		return true
+	if not bool(minigame.call("start", self, breaker)):
+		return false
+	_active_breaker_minigame = minigame
+	return true
+
+
+func is_breaker_minigame_active() -> bool:
+	return is_instance_valid(_active_breaker_minigame) \
+		and _active_breaker_minigame.has_method("is_running") \
+		and bool(_active_breaker_minigame.call("is_running"))
+
+
+## True while this player is away in an encounter being played on their own
+## machine. The body stands still here, and counting it as busy is what stops
+## the server walking it and stops a second minigame starting on top.
+func is_remote_encounter_active() -> bool:
+	return is_instance_valid(_remote_encounter_target)
+
+
 ## Shared "freeze movement/look, don't fight the minigame for input" gate.
-## Covers every minigame that can own the screen: door, fusebox, and toilet.
-## The fusebox minigame deliberately never calls acquire_minigame_ghost_safety
-## - a miss there is meant to be heard - so ghost suspension stays keyed off
-## the door minigame alone; this only covers input/movement ownership.
-func is_any_minigame_active() -> bool:
-	return is_door_minigame_active() or is_fusebox_minigame_active() or is_toilet_minigame_active()
+## Covers every minigame that can own the screen: door, fusebox, toilet, and
+## breaker. The fusebox minigame deliberately never calls
+## acquire_minigame_ghost_safety - a miss there is meant to be heard - so
+## ghost suspension stays keyed off the door minigame alone; this only covers
+## input/movement ownership.
+func _is_any_minigame_active() -> bool:
+	return is_door_minigame_active() \
+		or is_fusebox_minigame_active() \
+		or is_toilet_minigame_active() \
+		or is_breaker_minigame_active() \
+		or is_remote_encounter_active()
+
+
+## True when this node is a replica of somebody else's player: an encounter
+## started on it has to be played on their machine, not here.
+func _encounter_belongs_elsewhere() -> bool:
+	return _is_network_session() \
+		and multiplayer.is_server() \
+		and owner_peer_id > 0 \
+		and owner_peer_id != multiplayer.get_unique_id()
+
+
+func _hand_encounter_to_owner(target: Node, starter: StringName) -> void:
+	_remote_encounter_target = target
+	_begin_remote_encounter.rpc_id(owner_peer_id, _scene_path_of(target), starter)
+
+
+## Re-enters the same public API on the machine that pressed E, where
+## `_encounter_belongs_elsewhere()` is false and the minigame simply runs.
+@rpc("authority", "call_remote", "reliable")
+func _begin_remote_encounter(target_path: NodePath, starter: StringName) -> void:
+	if not is_local_player() or starter not in REMOTE_ENCOUNTER_STARTERS:
+		return
+	var target := _scene_node(target_path)
+	if target == null:
+		return
+	callv(starter, [target])
+
+
+## The one way an encounter's result reaches the door.
+##
+## On the authority it is applied straight away - the path single-player and the
+## host's own player take. On a client the encounter was played here but the
+## door is the server's, so the outcome is reported and comes back as durability
+## in the next apply_network_state().
+func report_door_outcome(door: Node, outcome: DoorOutcome) -> float:
+	if not is_instance_valid(door) or not ("repair_cap" in door):
+		return 0.0
+	if not WorldNet.is_world_authority():
+		_report_door_outcome.rpc_id(
+			NETWORK_SERVER_PEER_ID, int(door.get("entrance_id")), int(outcome)
+		)
+		return float(door.get("repair_cap"))
+	return _apply_door_outcome(door, outcome)
+
+
+func _apply_door_outcome(door: Node, outcome: DoorOutcome) -> float:
+	if _remote_encounter_target == door:
+		_remote_encounter_target = null
+	match outcome:
+		DoorOutcome.CLEARED:
+			if door.has_method("complete_exorcism"):
+				door.call("complete_exorcism")
+		DoorOutcome.FAILED:
+			if door.has_method("apply_exorcism_failure"):
+				return float(door.call("apply_exorcism_failure"))
+		DoorOutcome.CANCELLED:
+			if door.has_method("cancel_exorcism"):
+				door.call("cancel_exorcism")
+	return float(door.get("repair_cap"))
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _report_door_outcome(entrance_id: int, outcome: int) -> void:
+	if not multiplayer.is_server() or not _rpc_sender_owns_player():
+		return
+	for node: Node in get_tree().get_nodes_in_group("defense_doors"):
+		if int(node.get("entrance_id")) == entrance_id:
+			_apply_door_outcome(node, outcome as DoorOutcome)
+			return
+
+
+## Node paths travel relative to the current scene, so they mean the same thing
+## on a peer whose map sits somewhere else in its own tree.
+func _scene_path_of(node: Node) -> NodePath:
+	var scene := get_tree().current_scene
+	if scene == null or node == null:
+		return NodePath()
+	return scene.get_path_to(node)
+
+
+func _scene_node(path: NodePath) -> Node:
+	var scene := get_tree().current_scene
+	if scene == null or path.is_empty():
+		return null
+	return scene.get_node_or_null(path)
 
 
 ## Thin delegation to this player's own Bladder component - other systems
@@ -746,8 +1653,15 @@ func is_protected_from_ghost_attacks() -> bool:
 		or _minigame_ghost_release_remaining > 0.0
 
 
+## A body on the floor is out of the fight: every ghost drops it as a target
+## the moment it goes down, and picks it up again only after a rescue. The
+## `is_downed`/`is_spectator` terms are redundant with `is_alive` today and
+## stated anyway, because that is the contract, not an implementation detail.
 func can_be_targeted_by_ghosts() -> bool:
-	return is_alive and not is_protected_from_ghost_attacks()
+	return is_alive \
+		and not is_downed \
+		and not is_spectator \
+		and not is_protected_from_ghost_attacks()
 
 
 func apply_hunter_trap(source: Node3D) -> bool:
@@ -844,17 +1758,17 @@ func set_dev_clear_vision(enabled: bool) -> void:
 ## are straight up and down. Position is written directly, so no collision,
 ## gravity or step-up logic gets a say.
 func _fly(delta: float) -> void:
-	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	var input_dir := _movement_input()
 	var camera_basis := camera_pivot.global_basis
 	var motion := (
 		camera_basis * Vector3(input_dir.x, 0.0, input_dir.y)
 		+ Vector3.UP * (
-			(1.0 if Input.is_action_pressed("jump") else 0.0)
-			- (1.0 if Input.is_action_pressed("crouch") else 0.0)
+			(1.0 if _input_action_pressed(&"jump") else 0.0)
+			- (1.0 if _input_action_pressed(&"crouch") else 0.0)
 		)
 	)
 	var speed := walk_speed * 3.0
-	if Input.is_action_pressed("run"):
+	if _input_action_pressed(&"run"):
 		speed *= 3.0
 	if dev_fast_movement:
 		speed *= maxf(dev_speed_multiplier, 1.0)
@@ -959,6 +1873,8 @@ func _stop_footsteps() -> void:
 
 func _update_camera_motion(delta: float) -> void:
 	var target_height := crouch_camera_height if is_crouching else standing_camera_height
+	if is_downed:
+		target_height = downed_camera_height
 	var bob_offset := Vector2.ZERO
 	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
 
@@ -972,8 +1888,13 @@ func _update_camera_motion(delta: float) -> void:
 	var threat_wave := sin(Time.get_ticks_msec() * 0.019) * statue_threat
 	target_position.x += threat_wave * 0.008
 	var blend := minf(crouch_transition_speed * delta, 1.0)
+	# A modest roll is enough to read as "lying on the floor". Anything closer
+	# to a real 90 degrees fights mouse-look, which downed players keep.
+	var target_roll := threat_wave * 0.006
+	if is_downed:
+		target_roll += deg_to_rad(downed_camera_roll_degrees)
 	camera_pivot.position = camera_pivot.position.lerp(target_position, blend)
-	camera_pivot.rotation.z = lerpf(camera_pivot.rotation.z, threat_wave * 0.006, blend)
+	camera_pivot.rotation.z = lerpf(camera_pivot.rotation.z, target_roll, blend)
 
 
 func _try_step_up(horizontal_motion: Vector3) -> void:

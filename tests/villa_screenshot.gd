@@ -20,6 +20,10 @@ const SHOTS := [
 	{"name": "10_attic", "pos": Vector3(24, 8.7, 30), "look": Vector3(40, 8.4, 30)},
 	{"name": "11_boiler", "pos": Vector3(60, -1.8, 36), "look": Vector3(44, -1.9, 36)},
 	{"name": "12_outside", "pos": Vector3(40, 14.0, -22), "look": Vector3(40, 4.0, 20)},
+	{"name": "13_gate", "pos": Vector3(40, 1.7, -23), "look": Vector3(40, 1.4, -4)},
+	{"name": "14_front_court", "pos": Vector3(27, 1.7, -12), "look": Vector3(40, 1.2, -7)},
+	{"name": "15_back_garden", "pos": Vector3(38, 1.7, 73), "look": Vector3(64, 1.3, 68)},
+	{"name": "16_service_yard", "pos": Vector3(96, 1.7, 23), "look": Vector3(83, 1.2, 23)},
 ]
 
 

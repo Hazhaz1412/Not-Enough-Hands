@@ -64,6 +64,11 @@ signal spotted_jumpscare_started()
 
 @export_category('Attack')
 @export var attack_range: float = 1.15
+## Once it is this close, a blink is not an opening the statue exploits, it is
+## the kill: no wind-up to notice, no reprieve for opening your eyes again. The
+## only counter is never letting it get this close. 0 turns it off and leaves
+## the normal wind-up as the only way it kills.
+@export var blink_kill_distance: float = 2.0
 @export var attack_windup: float = 0.48
 ## Pause after a swing before it may wind up again. Long enough that a survived
 ## attack is a real chance to break away rather than a one-second reprieve.
@@ -135,6 +140,8 @@ var pose_index: int = -1
 var presentation_time: float = 0.0
 var stone_material: ShaderMaterial
 var eye_material: StandardMaterial3D
+var model_skeleton: Skeleton3D
+var model_bone_drivers: Array[Dictionary] = []
 
 @onready var visual_root: Node3D = $VisualRoot
 @onready var torso_pivot: Node3D = $VisualRoot/TorsoPivot
@@ -156,6 +163,10 @@ var eye_material: StandardMaterial3D
 @onready var teleport_audio: AudioStreamPlayer3D = $TeleportAudio
 @onready var attack_audio: AudioStreamPlayer3D = $AttackAudio
 @onready var spotted_jumpscare_audio: AudioStreamPlayer3D = $SpottedJumpscareAudio
+
+## The imported model is bound in a T-pose while the pivot rotations below
+## assume arms hanging at the sides, so its arm bones start from this drop.
+const MODEL_ARM_DROP_DEGREES: float = 80.0
 
 # Frozen silhouettes, in degrees. The statue snaps between these the instant it
 # is caught, so it is never in the same shape twice when you look back at it.
@@ -213,6 +224,7 @@ func _ready() -> void:
 	normal_collision_layer = collision_layer
 	normal_collision_mask = collision_mask
 	last_position = global_position
+	_setup_model()
 	_prepare_materials()
 	_apply_idle_pose(randi() % IDLE_POSES.size())
 	if active and intermittent_hunts_enabled and start_hidden:
@@ -223,6 +235,10 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# See hunter_ghost.gd: on a client this body is placed and animated by
+	# WorldReplicator, never simulated here.
+	if not WorldNet.is_world_authority():
+		return
 	attack_resume_grace_remaining = maxf(attack_resume_grace_remaining - delta, 0.0)
 	if not active:
 		state = StatueState.DORMANT
@@ -524,6 +540,11 @@ func _update_unseen_behavior(delta: float) -> void:
 		_update_attack_windup(delta)
 		return
 
+	# Checked before the grace period below: at this range the blink itself is
+	# the whole event, so it must not wait out even a fraction of a second.
+	if _try_blink_kill():
+		return
+
 	var effective_grace_time := unseen_grace_time
 	if is_instance_valid(current_target) and 'eyes_closed' in current_target and current_target.eyes_closed:
 		effective_grace_time = minf(unseen_grace_time, blink_unseen_grace_time)
@@ -646,6 +667,40 @@ func _navigation_direction(fallback_offset: Vector3) -> Vector3:
 		and fallback_offset.length_squared() > 0.0001:
 		return fallback_offset.normalized()
 	return Vector3.ZERO
+
+
+## Closes the distance the statue has already won: a player who blinks inside
+## blink_kill_distance is killed on the spot, with no wind-up to react to. It
+## still obeys everything a normal swing does - dev suspension, the floor/
+## ceiling height limit and the occlusion ray - so it cannot reach through a
+## wall or a storey.
+func _try_blink_kill() -> bool:
+	if blink_kill_distance <= 0.0 or _attacks_blocked():
+		return false
+	if not is_instance_valid(current_target):
+		return false
+	if not ('eyes_closed' in current_target) or not current_target.eyes_closed:
+		return false
+
+	var offset := current_target.global_position - global_position
+	if absf(offset.y) > max_attack_height_difference:
+		return false
+	offset.y = 0.0
+	if offset.length() > blink_kill_distance:
+		return false
+	if not _has_attack_line_of_sight(current_target):
+		return false
+
+	velocity.x = 0.0
+	velocity.z = 0.0
+	attack_audio.play()
+	attack_started.emit(current_target)
+	_apply_attack_pose(1.0)
+	if current_target.has_method('kill_by_ghost'):
+		current_target.kill_by_ghost(self)
+	state = StatueState.COOLDOWN
+	cooldown_timer = attack_cooldown
+	return true
 
 
 func _begin_attack() -> void:
@@ -935,6 +990,83 @@ func _primitive_material(mesh_instance: MeshInstance3D) -> Material:
 	return primitive.material if primitive else null
 
 
+## Swaps the procedural stone body for the imported statue model. The pivots,
+## socket light and dust stay: they are what poses the model, which ships
+## without a single animation clip.
+func _setup_model() -> void:
+	var model := visual_root.get_node_or_null('Model')
+	if model == null:
+		return
+	for node: Node in visual_root.find_children('*', 'MeshInstance3D', true, false):
+		if not model.is_ancestor_of(node):
+			(node as MeshInstance3D).visible = false
+
+	model_skeleton = model.find_child('Skeleton3D', true, false) as Skeleton3D
+	if model_skeleton == null:
+		push_warning('Statue model has no Skeleton3D: it will stay in its bind pose.')
+		return
+
+	var to_visual := visual_root.global_transform.affine_inverse() \
+		* model_skeleton.global_transform
+	var left_drop := Basis(Vector3.BACK, deg_to_rad(MODEL_ARM_DROP_DEGREES))
+	var right_drop := Basis(Vector3.BACK, deg_to_rad(-MODEL_ARM_DROP_DEGREES))
+	_add_bone_driver(torso_pivot, &'mixamorig_Spine_02', Basis(), to_visual)
+	_add_bone_driver(head_pivot, &'mixamorig_Neck_013', Basis(), to_visual)
+	_add_bone_driver(left_arm_pivot, &'mixamorig_LeftArm_017', left_drop, to_visual)
+	_add_bone_driver(left_forearm_pivot, &'mixamorig_LeftForeArm_018', Basis(), to_visual)
+	_add_bone_driver(right_arm_pivot, &'mixamorig_RightArm_06', right_drop, to_visual)
+	_add_bone_driver(right_forearm_pivot, &'mixamorig_RightForeArm_07', Basis(), to_visual)
+	_add_bone_driver(left_leg_pivot, &'mixamorig_LeftUpLeg_024', Basis(), to_visual)
+	_add_bone_driver(left_shin_pivot, &'mixamorig_LeftLeg_025', Basis(), to_visual)
+	_add_bone_driver(right_leg_pivot, &'mixamorig_RightUpLeg_028', Basis(), to_visual)
+	_add_bone_driver(right_shin_pivot, &'mixamorig_RightLeg_029', Basis(), to_visual)
+
+	# The model's head sits lower than the stone skull the light was placed for,
+	# so the socket glow rides down with it instead of hanging above the model.
+	var head_bone := model_skeleton.find_bone(&'mixamorig_Head_014')
+	if head_bone >= 0:
+		var head_height: float = (
+			to_visual * model_skeleton.get_bone_global_rest(head_bone).origin
+		).y
+		eye_light.position.y = head_height + 0.07 \
+			- torso_pivot.position.y - head_pivot.position.y
+
+
+## Pivot rotations are written in the body's axes, while a bone pose is relative
+## to that bone's own rest orientation inside the skeleton, so every rotation is
+## re-expressed through the basis that maps skeleton space onto the body.
+func _add_bone_driver(
+	pivot: Node3D, bone_name: StringName, base: Basis, to_visual: Transform3D
+) -> void:
+	var bone := model_skeleton.find_bone(bone_name)
+	if bone < 0:
+		push_warning('Statue model is missing bone %s.' % bone_name)
+		return
+	var to_bone := to_visual.basis * model_skeleton.get_bone_global_rest(bone).basis
+	model_bone_drivers.append({
+		'pivot': pivot,
+		'bone': bone,
+		'base': base,
+		'rest': model_skeleton.get_bone_rest(bone).basis,
+		'to_bone': to_bone,
+		'from_bone': to_bone.inverse(),
+	})
+
+
+## Copies the current pivot pose onto the model's skeleton. Every idle pose,
+## gait step and attack lunge already written for the stone body drives the
+## model instead, so it never stands there in its bind pose.
+func _sync_model_pose() -> void:
+	if model_skeleton == null:
+		return
+	for driver: Dictionary in model_bone_drivers:
+		var pivot: Node3D = driver['pivot']
+		var in_body: Basis = pivot.basis * (driver['base'] as Basis)
+		var in_bone: Basis = (driver['rest'] as Basis) \
+			* (driver['from_bone'] as Basis) * in_body * (driver['to_bone'] as Basis)
+		model_skeleton.set_bone_pose_rotation(driver['bone'], in_bone.get_rotation_quaternion())
+
+
 ## Caught in the open: snap into a brand new shape, facing whoever spotted it.
 ## The player never sees the transition, only that it is different now.
 func _play_spotted_jumpscare_once() -> void:
@@ -994,6 +1126,7 @@ func _apply_idle_pose(index: int) -> void:
 	right_shin_pivot.rotation = _degrees(pose['right_shin'])
 	jaw_open = pose['jaw']
 	_apply_jaw()
+	_sync_model_pose()
 	# Deliberately does NOT touch movement_phase: _stalk_target derives its
 	# speed burst from it, so resetting it here would make re-posing change
 	# how fast the statue moves.
@@ -1112,3 +1245,4 @@ func _update_presentation(delta: float) -> void:
 	elif state == StatueState.ATTACK_WINDUP:
 		shedding = 1.0
 	dust.amount_ratio = lerpf(dust.amount_ratio, shedding, minf(delta * 4.0, 1.0))
+	_sync_model_pose()

@@ -1,10 +1,19 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://house2/house2.gd" id="1_house2"]
 [ext_resource type="Script" path="res://audio/light_flicker.gd" id="2_light_flicker"]
+[ext_resource type="Script" path="res://power/power_manager.gd" id="3_power_manager"]
+[ext_resource type="PackedScene" path="res://power/main_breaker.tscn" id="4_main_breaker"]
 
 [node name="House2" type="Node3D"]
 script = ExtResource("1_house2")
 
 [node name="LightFlicker" type="Node3D" parent="."]
 script = ExtResource("2_light_flicker")
+
+[node name="PowerManager" type="Node" parent="."]
+script = ExtResource("3_power_manager")
+enable_power_drain = true
+
+[node name="MainBreaker" parent="." instance=ExtResource("4_main_breaker")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 8.65, 1.25, 4.5)

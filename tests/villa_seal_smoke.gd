@@ -34,6 +34,7 @@ func _run() -> void:
 		var open_floor := _stairwell_cells(spec, level)
 		var open_ceiling := _sky_cells(spec, level)
 		var open_wall := _shaft_cells(spec, level)
+		var entrance_faces := _entrance_faces(spec, level, data["extent"] as Rect2i)
 
 		for cell: Vector2i in walkable:
 			checked += 1
@@ -54,6 +55,8 @@ func _run() -> void:
 				var neighbour := cell + direction
 				if walkable.has(neighbour) or open_wall.has(neighbour):
 					continue
+				if entrance_faces.get(cell, Vector2i.ZERO) == direction:
+					continue
 				var outward := Vector3(direction.x, 0, direction.y) * 1.6
 				for height: float in [WAIST, HEAD]:
 					if _hits(space, centre + Vector3(0, height, 0), outward):
@@ -65,6 +68,27 @@ func _run() -> void:
 	print("Villa seal smoke test passed: %d cells enclosed, only the shaft, the "
 		% checked + "stairwells and the skylight left open.")
 	quit()
+
+
+## Non-overhead defense doors replace the wall on exactly one exterior face.
+## Their collider starts on the cell centre, so a ray starting there cannot be
+## used to prove enclosure; the breach opening itself is intentional anyway.
+func _entrance_faces(spec: VillaSpec, level: int, extent: Rect2i) -> Dictionary:
+	var faces: Dictionary = {}
+	for entrance: Dictionary in spec.entrances():
+		if int(entrance["level"]) != level or bool(entrance.get("overhead", false)):
+			continue
+		for cell_pair: Variant in entrance["cells"]:
+			var cell := VillaSpec.to_cell(cell_pair)
+			var direction := Vector2i.DOWN
+			if cell.x == extent.position.x:
+				direction = Vector2i.LEFT
+			elif cell.x == extent.position.x + extent.size.x - 1:
+				direction = Vector2i.RIGHT
+			elif cell.y == extent.position.y:
+				direction = Vector2i.UP
+			faces[cell] = direction
+	return faces
 
 
 ## Cells the floor is deliberately missing from: a stair coming up from below

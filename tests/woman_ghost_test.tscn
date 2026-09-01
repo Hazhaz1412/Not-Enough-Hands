@@ -1,0 +1,90 @@
+[gd_scene format=3 uid="uid://ij3pk0mhm2v7"]
+
+[ext_resource type="Script" uid="uid://rgnq6tchcvyp" path="res://tests/woman_ghost_test.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/ghosts/woman_ghost/woman_ghost.tscn" id="2_ghost"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_test"]
+sky_top_color = Color(0.008, 0.012, 0.03, 1)
+sky_horizon_color = Color(0.08, 0.055, 0.14, 1)
+ground_bottom_color = Color(0.004, 0.005, 0.012, 1)
+ground_horizon_color = Color(0.025, 0.02, 0.05, 1)
+
+[sub_resource type="Sky" id="Sky_test"]
+sky_material = SubResource("ProceduralSkyMaterial_test")
+
+[sub_resource type="Environment" id="Environment_test"]
+background_mode = 2
+sky = SubResource("Sky_test")
+ambient_light_source = 3
+ambient_light_color = Color(0.22, 0.18, 0.38, 1)
+ambient_light_energy = 0.7
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 1.1
+fog_enabled = true
+fog_light_color = Color(0.09, 0.045, 0.18, 1)
+fog_density = 0.015
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.015, 0.012, 0.027, 1)
+metallic = 0.25
+roughness = 0.55
+
+[sub_resource type="PlaneMesh" id="FloorMesh"]
+material = SubResource("FloorMaterial")
+size = Vector2(18, 18)
+
+[sub_resource type="BoxShape3D" id="FloorCollisionShape"]
+size = Vector3(18, 0.2, 18)
+
+[node name="WomanGhostTest" type="Node3D" unique_id=1050453942]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1825672887]
+environment = SubResource("Environment_test")
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=791258182]
+mesh = SubResource("FloorMesh")
+
+[node name="FloorCollision" type="StaticBody3D" parent="." unique_id=1555361475]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FloorCollision" unique_id=321917608]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+shape = SubResource("FloorCollisionShape")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=310014733]
+transform = Transform3D(1, 0, 0, 0, 0.9659258, 0.258819, 0, -0.258819, 0.9659258, 0, 2.8, 10)
+current = true
+
+[node name="MoonLight" type="DirectionalLight3D" parent="." unique_id=148953195]
+transform = Transform3D(0.88294756, 0.36994863, -0.2890356, 0, 0.6156615, 0.7880107, 0.46947157, -0.6957722, 0.5435968, 0, 0, 0)
+light_color = Color(0.43, 0.35, 0.9, 1)
+light_energy = 1.6
+shadow_enabled = true
+
+[node name="GhostFillLight" type="OmniLight3D" parent="." unique_id=1995700738]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 1.5)
+light_color = Color(0.72, 0.15, 0.88, 1)
+light_energy = 5.0
+omni_range = 9.0
+
+[node name="TestController" type="Node3D" parent="." unique_id=580657355]
+script = ExtResource("1_script")
+
+[node name="WomanGhost" parent="TestController" unique_id=556996500 instance=ExtResource("2_ghost")]
+auto_cycle = true
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1814308373]
+
+[node name="Title" type="Label" parent="CanvasLayer" unique_id=485570304]
+offset_left = 24.0
+offset_top = 22.0
+theme_override_colors/font_color = Color(0.9, 0.78, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "Woman Ghost — model preview"
+
+[node name="Hint" type="Label" parent="CanvasLayer" unique_id=1225474373]
+offset_left = 25.0
+offset_top = 55.0
+theme_override_colors/font_color = Color(0.76, 0.72, 0.86, 1)
+theme_override_font_sizes/font_size = 14
+text = "Loading imported animations... Press F6 to run this scene."

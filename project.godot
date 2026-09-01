@@ -11,9 +11,14 @@ config_version=5
 [application]
 
 config/name="Not-Enough-Hands"
-run/main_scene="uid://d30ag76yuh2hl"
+run/main_scene="res://network/multiplayer_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+NetworkManager="*res://network/network_manager.gd"
+WorldReplicator="*res://network/world_replicator.gd"
 
 [display]
 
@@ -25,6 +30,10 @@ window/stretch/aspect="expand"
 [dotnet]
 
 project/assembly_name="Not-Enough-Hands"
+
+[filesystem]
+
+import/blender/enabled=false
 
 [input]
 

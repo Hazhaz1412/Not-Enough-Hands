@@ -12,7 +12,10 @@ func _run() -> void:
 	var player := player_scene.instantiate() as CharacterBody3D
 	var switch_a := switch_scene.instantiate() as StaticBody3D
 	var switch_b := switch_scene.instantiate() as StaticBody3D
+	var power_manager := PowerManager.new()
+	power_manager.enable_power_drain = false
 
+	root.add_child(power_manager)
 	root.add_child(player)
 	root.add_child(switch_a)
 	root.add_child(switch_b)
@@ -27,6 +30,12 @@ func _run() -> void:
 	var interactable_a: Node = switch_a.get_node("Interactable")
 	var light_a := switch_a.get_node("Light") as OmniLight3D
 	var light_b := switch_b.get_node("Light") as OmniLight3D
+	var device_a := switch_a.get_node(switch_a.get("controlled_device")) as ElectricalDevice
+	var device_b := switch_b.get_node(switch_b.get("controlled_device")) as ElectricalDevice
+	if device_a != light_a or device_b != light_b:
+		push_error("Inspector device references do not point each switch to its own light.")
+		quit(1)
+		return
 
 	await physics_frame
 	await physics_frame

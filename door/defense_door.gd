@@ -82,7 +82,11 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if minigame_active:
+	# A client runs no attack of its own: its durability, phase and timers all
+	# arrive through apply_network_state(). Without this every peer would chew
+	# through its own copy of the door on its own schedule and disagree about
+	# which entrances are still standing.
+	if minigame_active or not WorldNet.is_world_authority():
 		return
 	match attack_phase:
 		AttackPhase.STALKING:
@@ -250,6 +254,52 @@ func reset_door() -> void:
 	repair_unlocked_after_breach = false
 	_set_breached_visual(false)
 	_set_attack_phase(AttackPhase.IDLE)
+	_update_damage_visuals()
+	durability_changed.emit(self, current_durability, repair_cap)
+
+
+## Takes the server's door wholesale, and re-derives everything visible from it.
+##
+## The breach and the rebuild are driven off the durability rather than off the
+## phase, because those two are what a client can get visibly wrong: a hole it
+## cannot walk through, or a door it can walk through that still looks solid.
+## Everything else - the timers, the RNG, the audio - stays the server's alone
+## and is never sent.
+func apply_network_state(
+	durability: float,
+	cap: float,
+	phase: AttackPhase,
+	exorcism_running: bool,
+	repair_unlocked: bool
+) -> void:
+	var was_down := current_durability <= 0.0
+	var previous_phase := attack_phase
+	var lost := current_durability - maxf(durability, 0.0)
+	current_durability = maxf(durability, 0.0)
+	repair_cap = cap
+	minigame_active = exorcism_running
+	repair_unlocked_after_breach = repair_unlocked
+	_set_attack_phase(phase)
+
+	# The scratching and the impacts are fired by the calls a client never
+	# makes, so they are re-derived here: the phase turning to STALKING is the
+	# warning, and durability having dropped since the last packet is a hit.
+	# Damage arrives as a level rather than as events, so several ticks inside
+	# one 5 Hz packet are one reaction - close enough to hear and see.
+	if previous_phase != AttackPhase.STALKING and phase == AttackPhase.STALKING:
+		_play_warning_audio()
+	if lost > 0.0:
+		_play_hit_reaction(phase == AttackPhase.STRONG_ATTACK)
+
+	var is_down := current_durability <= 0.0
+	if is_down and not was_down:
+		_stop_attack_audio()
+		_set_breached_visual(true)
+		breached.emit(self)
+	elif was_down and not is_down:
+		_set_breached_visual(false)
+		rebuilt.emit(self)
+
 	_update_damage_visuals()
 	durability_changed.emit(self, current_durability, repair_cap)
 

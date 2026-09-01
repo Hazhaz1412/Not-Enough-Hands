@@ -5,6 +5,7 @@
 [ext_resource type="AudioStream" path="res://assets/audio/statue_teleport.wav" id="3_teleport"]
 [ext_resource type="AudioStream" path="res://assets/audio/statue_attack.ogg" id="4_attack"]
 [ext_resource type="AudioStream" path="res://assets/audio/statue_spotted_jumpscare.mp3" id="5_jumpscare"]
+[ext_resource type="PackedScene" uid="uid://cy52ttrg2sn4r" path="res://assets/ghosts/statue_ghost/solitkaa.glb" id="6_model"]
 
 [sub_resource type="ShaderMaterial" id="Material_stone"]
 render_priority = 0
@@ -325,6 +326,9 @@ unit_size = 5.0
 max_distance = 34.0
 
 [node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="Model" parent="VisualRoot" instance=ExtResource("6_model")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
 
 [node name="Shroud" type="MeshInstance3D" parent="VisualRoot"]
 position = Vector3(0, 0.8, 0.01)

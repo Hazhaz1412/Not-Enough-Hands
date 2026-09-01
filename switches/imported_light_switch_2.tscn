@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://diflg3jxm21vm"]
+
+[ext_resource type="Script" uid="uid://c7nblg6wiw374" path="res://switches/light_switch.gd" id="1_switch"]
+[ext_resource type="PackedScene" uid="uid://c5cix15gsmhgu" path="res://assets/electrical_devices/light_switch_2.glb" id="2_model"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_switch"]
+size = Vector3(0.28, 0.32, 0.12)
+
+[node name="LightSwitch2" type="StaticBody3D" unique_id=511727960]
+transform = Transform3D(-3.6199901e-06, 0, -1, 0, 1, 0, 1, 0, -3.6199901e-06, 0, 0, 0)
+collision_layer = 3
+script = ExtResource("1_switch")
+
+[node name="Visual" parent="." unique_id=1898814085 instance=ExtResource("2_model")]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0.025)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1832706732]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.035)
+shape = SubResource("BoxShape3D_switch")

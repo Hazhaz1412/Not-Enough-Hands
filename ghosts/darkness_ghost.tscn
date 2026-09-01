@@ -1,0 +1,13 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/ghosts/woman_ghost/woman_ghost.tscn" id="1_woman"]
+[ext_resource type="Script" path="res://ghosts/darkness_ghost.gd" id="2_darkness"]
+[ext_resource type="Script" path="res://power/darkness_entity_power_effect.gd" id="3_power"]
+
+[node name="DarknessGhost" instance=ExtResource("1_woman")]
+script = ExtResource("2_darkness")
+chase_speed = 2.2
+stopping_distance = 0.75
+
+[node name="DarknessEntityPowerEffect" type="Node" parent="."]
+script = ExtResource("3_power")

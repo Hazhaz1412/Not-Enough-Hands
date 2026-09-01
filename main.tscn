@@ -11,6 +11,9 @@
 [ext_resource type="PackedScene" path="res://ui/night_clock.tscn" id="9_night_clock"]
 [ext_resource type="PackedScene" path="res://ui/dev_tools.tscn" id="10_dev_tools"]
 [ext_resource type="PackedScene" path="res://ghosts/hunter_ghost.tscn" id="11_hunter"]
+[ext_resource type="PackedScene" uid="uid://c6mhmj2asxc5g" path="res://assets/electrical_devices/light_switch.glb" id="12_dg77c"]
+[ext_resource type="PackedScene" path="res://items/totem_brazier.tscn" id="13_brazier"]
+[ext_resource type="Script" path="res://items/totem_ritual.gd" id="14_totem_ritual"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 sky_top_color = Color(0.22, 0.38, 0.58, 1)
@@ -192,3 +195,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, -2.6, 2)
 
 [node name="Sweep11Cellar" type="Marker3D" parent="HunterRoute" unique_id=1093887744 groups=["hunter_sweep_points"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, -2.6, -2)
+
+[node name="Sketchfab_Scene" parent="." unique_id=2020818540 instance=ExtResource("12_dg77c")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1763079, -1.1920929e-07, 6.692209)
+
+[node name="Sketchfab_Scene2" parent="." unique_id=213927603 instance=ExtResource("12_dg77c")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.61995196, -1.1920929e-07, 0.24888098)
+
+[node name="TotemBrazier" parent="." instance=ExtResource("13_brazier")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 0, -2.2)
+
+[node name="TotemRitual" type="Node" parent="."]
+script = ExtResource("14_totem_ritual")

@@ -1,0 +1,104 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Shader" path="res://jumpscare/jumpscare_blood.gdshader" id="1_blood"]
+[ext_resource type="PackedScene" path="res://ghosts/ghost_visual.tscn" id="2_ghost_visual"]
+[ext_resource type="Texture2D" uid="uid://bo7eq51ftgpkq" path="res://assets/ghosts/model_hunter/Meshy_AI_Midnight_Grin_biped/Meshy_AI_Midnight_Grin_biped_Animation_Walking_withSkin_texture_0.png" id="4_albedo"]
+[ext_resource type="AudioStream" path="res://assets/audio/minigame/door_minigame_jumpscare.mp3" id="3_sting"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_blood"]
+shader = ExtResource("1_blood")
+shader_parameter/albedo_texture = ExtResource("4_albedo")
+shader_parameter/blood_amount = 0.0
+shader_parameter/blood_color = Color(0.3, 0.012, 0.016, 1)
+shader_parameter/blood_origin_height = 165.5
+shader_parameter/blood_reach = 42.0
+shader_parameter/face_side_fade_near = -6.0
+shader_parameter/face_side_fade_far = 2.0
+shader_parameter/streak_width = 2.4
+
+[sub_resource type="Environment" id="Environment_jumpscare"]
+background_mode = 2
+background_color = Color(0, 0, 0, 0)
+ambient_light_source = 3
+ambient_light_color = Color(0.5, 0.47, 0.5, 1)
+ambient_light_energy = 0.55
+
+[node name="JumpscareVisual" type="CanvasLayer"]
+layer = 140
+process_mode = 3
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="VisualRoot" type="SubViewportContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+stretch = true
+
+[node name="Viewport" type="SubViewport" parent="VisualRoot"]
+transparent_bg = true
+handle_input_locally = false
+size = Vector2i(1152, 648)
+render_target_update_mode = 4
+own_world_3d = true
+
+[node name="World" type="Node3D" parent="VisualRoot/Viewport"]
+
+[node name="Environment" type="WorldEnvironment" parent="VisualRoot/Viewport/World"]
+environment = SubResource("Environment_jumpscare")
+
+[node name="Camera3D" type="Camera3D" parent="VisualRoot/Viewport/World"]
+current = true
+fov = 55.0
+near = 0.02
+
+[node name="KeyLight" type="DirectionalLight3D" parent="VisualRoot/Viewport/World"]
+transform = Transform3D(0.961262, 0, -0.275637, -0.0851766, 0.951057, -0.297046, 0.262147, 0.309017, 0.914214, 0, 0, 0)
+light_color = Color(0.86, 0.88, 1, 1)
+light_energy = 1.1
+
+[node name="FillLight" type="DirectionalLight3D" parent="VisualRoot/Viewport/World"]
+transform = Transform3D(0.829038, 0, 0.559193, -0.116263, 0.978148, 0.172367, -0.546973, -0.207912, 0.810921, 0, 0, 0)
+light_color = Color(0.72, 0.66, 0.7, 1)
+light_energy = 0.45
+
+[node name="GhostAnchor" type="Node3D" parent="VisualRoot/Viewport/World"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.4)
+
+[node name="ModelRoot" type="Node3D" parent="VisualRoot/Viewport/World/GhostAnchor"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.022, -1.56, 0)
+
+[node name="Model" parent="VisualRoot/Viewport/World/GhostAnchor/ModelRoot" instance=ExtResource("2_ghost_visual")]
+body_material = SubResource("ShaderMaterial_blood")
+
+[node name="Flash" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 0.97, 0.94, 0)
+
+[node name="Tint" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.52, 0.02, 0.03, 0)
+
+[node name="ImpactAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_sting")
+volume_db = -1.0

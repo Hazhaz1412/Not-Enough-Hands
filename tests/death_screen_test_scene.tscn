@@ -9,3 +9,5 @@
 [node name="StatueKiller" type="Node3D" parent="." groups=["statue_ghosts"]]
 
 [node name="CrawlerKiller" type="Node3D" parent="." groups=["crawler_ghosts"]]
+
+[node name="DarknessKiller" type="Node3D" parent="." groups=["darkness_ghosts"]]

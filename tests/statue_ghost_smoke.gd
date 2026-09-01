@@ -30,6 +30,10 @@ func _run() -> void:
 	var statue := statue_scene.instantiate() as CharacterBody3D
 	statue.set('intermittent_hunts_enabled', false)
 	statue.set('unseen_grace_time', 0.0)
+	# This test measures how far a blink lets the statue lunge, which means
+	# blinking it right up next to the player - keep the point-blank blink kill
+	# out of it, tests/statue_blink_kill_smoke.gd covers that.
+	statue.set('blink_kill_distance', 0.0)
 	root.add_child(statue)
 	statue.global_position = Vector3(0.0, 0.02, -5.0)
 

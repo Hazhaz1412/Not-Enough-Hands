@@ -22,9 +22,27 @@ func select_slot(index: int) -> void:
 	selection_changed.emit(selected_slot)
 
 
-## Fills the first empty slot with `item` and returns true, or returns false
-## without touching any slot if both are already occupied.
+## How many of the two slots `item` takes up while carried. Anything that does
+## not declare a `slot_cost` is a normal one-handed pickup; a ritual totem
+## declares 2 and so needs both hands free.
+static func get_item_slot_cost(item: Node) -> int:
+	if item and "slot_cost" in item:
+		return clampi(int(item.get("slot_cost")), 1, SLOT_COUNT)
+	return 1
+
+
+## Fills the slots `item` needs and returns true, or returns false without
+## touching any slot if there is not that much room. A two-handed item needs
+## both slots empty, not just one.
 func try_add_item(item: Node) -> bool:
+	if get_item_slot_cost(item) >= SLOT_COUNT:
+		for i in SLOT_COUNT:
+			if slots[i] != null:
+				return false
+		for i in SLOT_COUNT:
+			slots[i] = item
+			slot_changed.emit(i)
+		return true
 	for i in SLOT_COUNT:
 		if slots[i] == null:
 			slots[i] = item
@@ -42,11 +60,21 @@ func is_slot_empty(index: int) -> bool:
 
 
 ## Clears the selected slot and returns whatever item was in it (null if it
-## was already empty).
+## was already empty). A two-handed item is released from both slots at once.
 func remove_selected() -> Node:
 	var item: Node = slots[selected_slot]
 	if item == null:
 		return null
-	slots[selected_slot] = null
-	slot_changed.emit(selected_slot)
+	remove_item(item)
 	return item
+
+
+## Clears every slot holding `item`. Returns false if it was not being carried.
+func remove_item(item: Node) -> bool:
+	var removed := false
+	for i in SLOT_COUNT:
+		if item != null and slots[i] == item:
+			slots[i] = null
+			slot_changed.emit(i)
+			removed = true
+	return removed

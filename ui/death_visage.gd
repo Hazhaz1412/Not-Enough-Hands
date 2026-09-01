@@ -8,19 +8,6 @@ var killer_variant: StringName = &"statue"
 var scare_progress: float = 0.0
 var elapsed: float = 0.0
 
-## The outline the death screen ghosts in red behind the portrait: the ring the
-## crown of spines sits on, with the beak running off the bottom of the frame.
-## Packed arrays cannot be `const` in GDScript, so this is a plain member built
-## once at load.
-var hunter_skull := PackedVector2Array([
-	Vector2(-0.30, -0.26), Vector2(-0.12, -0.38),
-	Vector2(0.13, -0.37), Vector2(0.31, -0.21),
-	Vector2(0.30, 0.03), Vector2(0.12, 0.17),
-	Vector2(0.06, 0.52), Vector2(-0.06, 0.52),
-	Vector2(-0.13, 0.16), Vector2(-0.31, 0.01),
-])
-
-
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_process(true)
@@ -48,10 +35,17 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	if size.x <= 1.0 or size.y <= 1.0:
 		return
+	# Hunter deaths use jumpscare/jumpscare_controller.gd. This legacy vector
+	# layer must never draw a second Hunter underneath the imported 3D body.
+	if killer_variant == &"hunter":
+		return
 
 	var unit := minf(size.x, size.y)
 	var rush := ease(clampf((scare_progress - 0.025) / 0.82, 0.0, 1.0), -2.35)
 	var face_scale := lerpf(0.34, 1.46, rush)
+	if killer_variant == &"darkness":
+		var darkness_rush := ease(clampf((scare_progress - 0.34) / 0.55, 0.0, 1.0), -3.2)
+		face_scale = lerpf(0.72, 1.68, darkness_rush)
 	face_scale *= 1.0 + sin(elapsed * 31.0) * lerpf(0.008, 0.035, scare_progress)
 
 	var shake_strength := lerpf(2.0, 28.0, scare_progress)
@@ -71,20 +65,25 @@ func _draw() -> void:
 		face_rotation,
 		Vector2.ONE * face_scale
 	)
-	_draw_head_silhouette(unit, Color(0.05, 0.75, 0.88, 0.18))
+	var split_a := Color(0.05, 0.75, 0.88, 0.18)
+	var split_b := Color(0.95, 0.015, 0.025, 0.24)
+	if killer_variant == &"darkness":
+		split_a = Color(0.20, 0.42, 0.95, 0.14)
+		split_b = Color(0.48, 0.08, 0.72, 0.18)
+	_draw_head_silhouette(unit, split_a)
 	draw_set_transform(
 		center + Vector2(chromatic_offset, 0.0),
 		face_rotation,
 		Vector2.ONE * face_scale
 	)
-	_draw_head_silhouette(unit, Color(0.95, 0.015, 0.025, 0.24))
+	_draw_head_silhouette(unit, split_b)
 
 	draw_set_transform(center, face_rotation, Vector2.ONE * face_scale)
 	match killer_variant:
 		&"crawler":
 			_draw_crawler(unit)
-		&"hunter":
-			_draw_hunter(unit)
+		&"darkness":
+			_draw_darkness(unit)
 		_:
 			_draw_statue(unit)
 
@@ -93,8 +92,13 @@ func _draw() -> void:
 
 
 func _draw_head_silhouette(unit: float, color: Color) -> void:
-	if killer_variant == &"hunter":
-		draw_colored_polygon(_scaled(hunter_skull, unit), color)
+	if killer_variant == &"darkness":
+		draw_colored_polygon(_scaled(PackedVector2Array([
+			Vector2(-0.43, -0.48), Vector2(-0.12, -0.57),
+			Vector2(0.20, -0.53), Vector2(0.44, -0.36),
+			Vector2(0.38, 0.52), Vector2(0.12, 0.64),
+			Vector2(-0.18, 0.61), Vector2(-0.42, 0.42),
+		]), unit), color)
 		return
 	if killer_variant == &"crawler":
 		draw_colored_polygon(_scaled(PackedVector2Array([
@@ -270,150 +274,91 @@ func _draw_crawler(unit: float) -> void:
 		draw_polyline(points, Color(0.35, 0.025, 0.045, 0.85), maxf(unit * 0.004, 1.5), true)
 
 
-## The huntsman is the only one of the three that is not a face at all: it is a
-## hole, a ring of bone spines around it, and an eye on the end of every spine.
-## The light is not a lantern any more - it is the creature's own gaze coming
-## out of the hole, which is cold, does not flicker like a flame, and is already
-## pointed at you. The last thing that happens is the beak coming down the
-## middle of the frame.
-func _draw_hunter(unit: float) -> void:
-	var bone := Color(0.255, 0.210, 0.158, 1.0)
-	var bone_lit := Color(0.44, 0.365, 0.272, 1.0)
-	var void_color := Color(0.002, 0.001, 0.001, 1.0)
-	var iris := Color(0.95, 0.55, 0.20, 1.0)
-	var flesh := Color(0.055, 0.045, 0.038, 1.0)
-	var gaze := Color(0.62, 0.70, 0.82)
+## Darkness Ghost's outage portrait: almost all hair and shadow, with only its
+## cold face, reaching fingers and eyes surviving the blackout.
+func _draw_darkness(unit: float) -> void:
+	var shadow := Color(0.001, 0.002, 0.008, 1.0)
+	var hair := Color(0.008, 0.012, 0.025, 1.0)
+	var skin := Color(0.30, 0.34, 0.42, 1.0)
+	var skin_lit := Color(0.51, 0.58, 0.68, 1.0)
+	var cold := Color(0.52, 0.78, 1.0, 1.0)
+	var void_color := Color(0.0, 0.0, 0.003, 1.0)
 
-	# The gaze washing out of the hole. It pulses on the creature's own rhythm
-	# rather than guttering, which is the difference between a light something
-	# is carrying and a light something *is*.
-	var pulse := 1.0 + sin(elapsed * 6.0) * 0.10
-	draw_circle(Vector2.ZERO, unit * 0.70 * pulse, Color(gaze.r, gaze.g, gaze.b, 0.045))
-	draw_circle(Vector2.ZERO, unit * 0.38 * pulse, Color(gaze.r, gaze.g, gaze.b, 0.075))
-
-	# Shoulders and ribcage, close enough now to fill everything the crown does
-	# not - and carrying eyes of their own.
-	draw_colored_polygon(_scaled(PackedVector2Array([
-		Vector2(-0.66, 0.62), Vector2(-0.44, 0.20),
-		Vector2(-0.16, 0.06), Vector2(0.18, 0.06),
-		Vector2(0.46, 0.22), Vector2(0.68, 0.64),
-	]), unit), flesh)
-
-	# The crown. Ten spines, each a polyline rather than a filled shape so they
-	# stay spindly and wrong at any scale, and each one twitching on its own.
-	var spines := 10
-	for index: int in spines:
-		var seed := float(index)
-		var angle := TAU * seed / float(spines) - PI * 0.5 \
-			+ sin(elapsed * (0.8 + seed * 0.11) + seed) * 0.045
-		var reach := 0.58 + sin(elapsed * (2.1 + seed * 0.23) + seed * 1.7) * 0.035
-		var out := Vector2(cos(angle), sin(angle))
-		var across := Vector2(-out.y, out.x)
-		var root := out * 0.20
-		var elbow := out * (reach * 0.62) + across * 0.035
-		var tip := out * reach
+	for index: int in 12:
+		var side := -1.0 if index % 2 == 0 else 1.0
+		var row := float(index / 2)
+		var root := Vector2(side * (0.16 + row * 0.035), -0.35 + row * 0.025)
+		var sway := sin(elapsed * (2.2 + row * 0.17) + row * 1.9) * 0.065
+		var tip := Vector2(side * (0.42 + row * 0.035 + sway), 0.66)
 		draw_polyline(
-			PackedVector2Array([root * unit, elbow * unit, tip * unit]),
-			bone,
-			maxf(unit * 0.012, 2.5),
-			true
-		)
-		# A barb off each shaft, so the ring is spiked and not just spoked.
-		draw_line(
-			(elbow + across * 0.005) * unit,
-			(elbow + across * 0.048 - out * 0.015) * unit,
-			bone,
-			maxf(unit * 0.005, 1.5),
-			true
-		)
-		_draw_stalker_eye(tip * unit, unit, 0.030, iris, seed * 1.31)
-
-	# The hole. Drawn last of the head so nothing bleeds into it.
-	draw_circle(Vector2.ZERO, unit * 0.215, void_color)
-	draw_arc(Vector2.ZERO, unit * 0.225, 0.0, TAU, 28, bone, maxf(unit * 0.008, 2.0), true)
-
-	# Skull and beak, straight down the middle and out of the bottom of frame.
-	draw_colored_polygon(_scaled(PackedVector2Array([
-		Vector2(-0.082, 0.02), Vector2(0.082, 0.02),
-		Vector2(0.038, 0.30), Vector2(0.020, 0.62),
-		Vector2(-0.020, 0.62), Vector2(-0.038, 0.30),
-	]), unit), bone)
-	# One lit edge, raked by its own gaze from above.
-	draw_colored_polygon(_scaled(PackedVector2Array([
-		Vector2(-0.082, 0.02), Vector2(-0.024, 0.02),
-		Vector2(-0.010, 0.62), Vector2(-0.020, 0.62),
-	]), unit), bone_lit)
-	draw_polyline(_scaled(PackedVector2Array([
-		Vector2(-0.082, 0.02), Vector2(-0.038, 0.30), Vector2(-0.020, 0.62),
-		Vector2(0.020, 0.62), Vector2(0.038, 0.30), Vector2(0.082, 0.02),
-	]), unit), Color(0.07, 0.055, 0.045, 1.0), maxf(unit * 0.009, 2.0), true)
-	# The mandible splitting away from it, wider the closer this gets.
-	var gape := 0.03 + sin(elapsed * 11.0) * 0.012
-	draw_polyline(_scaled(PackedVector2Array([
-		Vector2(-0.06, 0.12), Vector2(-0.05 - gape, 0.38), Vector2(-0.03 - gape, 0.66),
-	]), unit), bone, maxf(unit * 0.008, 2.0), true)
-	# Serrations cut into the beak's own edge rather than a row of teeth stuck
-	# onto it: this jaw is one piece of bone, and it is not a mouth.
-	for notch: int in 5:
-		var along := 0.14 + float(notch) * 0.095
-		var half := lerpf(0.062, 0.024, float(notch) / 4.0)
-		draw_line(
-			Vector2(-half, along) * unit,
-			Vector2(-half * 0.45, along + 0.028) * unit,
-			Color(0.06, 0.05, 0.04, 1.0),
-			maxf(unit * 0.006, 1.5),
-			true
-		)
-		draw_line(
-			Vector2(half, along) * unit,
-			Vector2(half * 0.45, along + 0.028) * unit,
-			Color(0.06, 0.05, 0.04, 1.0),
-			maxf(unit * 0.006, 1.5),
+			_scaled(PackedVector2Array([
+				root,
+				Vector2(side * (0.34 + row * 0.025 - sway), 0.05),
+				tip,
+			]), unit),
+			hair,
+			maxf(unit * (0.035 - row * 0.002), 4.0),
 			true
 		)
 
-	# The pair in roughly the place a face would put them, and then the ones
-	# that are not.
 	for side: float in [-1.0, 1.0]:
-		_draw_stalker_eye(Vector2(side * 0.155, 0.075) * unit, unit, 0.042, iris, side * 0.6)
-		_draw_stalker_eye(Vector2(side * 0.375, 0.335) * unit, unit, 0.034, iris, side * 2.2)
-		_draw_stalker_eye(Vector2(side * 0.545, 0.545) * unit, unit, 0.026, iris, side * 3.9)
+		var wrist := Vector2(side * 0.61, 0.46)
+		var palm := Vector2(side * 0.40, 0.20)
+		draw_line(wrist * unit, palm * unit, hair, maxf(unit * 0.055, 7.0), true)
+		for finger: int in 4:
+			var finger_y := 0.04 + float(finger) * 0.065
+			var curl := 0.02 * sin(elapsed * 5.0 + finger)
+			draw_polyline(_scaled(PackedVector2Array([
+				palm + Vector2(0.0, finger_y * 0.25),
+				Vector2(side * (0.30 - curl), finger_y),
+				Vector2(side * (0.25 - curl), finger_y + 0.10),
+			]), unit), skin, maxf(unit * 0.012, 2.5), true)
 
-	# It is soaking, and it is close enough now that the run-off is in frame.
-	for index: int in 5:
-		var drift := fposmod(elapsed * (0.5 + index * 0.11) + index * 0.29, 1.0)
-		var origin := Vector2((index - 2) * 0.155, 0.10) * unit
-		var bead := origin + Vector2(0.0, drift * 0.55 * unit)
-		draw_line(origin, bead, Color(0.03, 0.026, 0.022, 0.5), maxf(unit * 0.004, 1.0), true)
-		draw_circle(bead, unit * 0.012 * (1.0 - drift * 0.6), Color(0.06, 0.055, 0.05, 0.8))
+	draw_colored_polygon(_scaled(PackedVector2Array([
+		Vector2(-0.38, -0.47), Vector2(-0.10, -0.56),
+		Vector2(0.22, -0.51), Vector2(0.39, -0.31),
+		Vector2(0.34, 0.58), Vector2(-0.31, 0.61),
+	]), unit), hair)
+	var face := _scaled(PackedVector2Array([
+		Vector2(-0.22, -0.38), Vector2(-0.05, -0.47),
+		Vector2(0.17, -0.40), Vector2(0.25, -0.16),
+		Vector2(0.17, 0.30), Vector2(0.0, 0.46),
+		Vector2(-0.18, 0.29), Vector2(-0.26, -0.13),
+	]), unit)
+	draw_colored_polygon(face, skin)
+	draw_colored_polygon(_scaled(PackedVector2Array([
+		Vector2(-0.20, -0.35), Vector2(-0.04, -0.43),
+		Vector2(-0.02, 0.23), Vector2(-0.16, 0.29),
+	]), unit), skin_lit)
 
+	var eye_power := ease(clampf((scare_progress - 0.24) / 0.58, 0.0, 1.0), -2.4)
+	for side: float in [-1.0, 1.0]:
+		var eye_center := Vector2(side * 0.105, -0.105) * unit
+		draw_circle(eye_center, unit * 0.070, Color(cold.r, cold.g, cold.b, 0.04 + eye_power * 0.13))
+		draw_colored_polygon(_scaled(PackedVector2Array([
+			Vector2(side * 0.185, -0.13), Vector2(side * 0.045, -0.16),
+			Vector2(side * 0.055, -0.055), Vector2(side * 0.18, -0.05),
+		]), unit), void_color)
+		draw_circle(eye_center, unit * lerpf(0.010, 0.029, eye_power), cold)
+		draw_circle(eye_center, unit * 0.009, Color.WHITE)
 
-## One of the creature's eyes: a wet dark ball, an iris that carries its own
-## light, and a pupil that is a hole. `offset` desynchronises the blink, because
-## a body covered in eyes that all blink together reads as decoration.
-func _draw_stalker_eye(
-	center: Vector2,
-	unit: float,
-	radius: float,
-	iris: Color,
-	offset: float
-) -> void:
-	# Open almost all the time: the blink is a tenth of the cycle, and `offset`
-	# means no two eyes are inside that tenth together.
-	var cycle := fposmod(elapsed * 0.7 + offset, 1.0)
-	var blink := 0.0 if cycle > 0.09 else sin(cycle / 0.09 * PI)
-	var open := 1.0 - blink * 0.92
-	var scaled_radius := unit * radius
-	draw_circle(center, scaled_radius, Color(0.045, 0.04, 0.035, 1.0))
-	if open <= 0.05:
-		return
-	draw_circle(center, scaled_radius * 0.52 * open, Color(iris.r, iris.g, iris.b, 0.82))
-	draw_circle(center, scaled_radius * 0.30 * open, Color(0.002, 0.002, 0.003, 1.0))
-	draw_circle(
-		center - Vector2(scaled_radius, scaled_radius) * 0.30,
-		scaled_radius * 0.14,
-		Color(0.85, 0.88, 0.95, 0.75)
-	)
+	var mouth_open := ease(clampf((scare_progress - 0.48) / 0.42, 0.0, 1.0), -2.0)
+	draw_colored_polygon(_scaled(PackedVector2Array([
+		Vector2(-0.055 - mouth_open * 0.025, 0.09),
+		Vector2(0.055 + mouth_open * 0.025, 0.09),
+		Vector2(0.075 + mouth_open * 0.045, 0.28 + mouth_open * 0.10),
+		Vector2(0.0, 0.39 + mouth_open * 0.08),
+		Vector2(-0.075 - mouth_open * 0.045, 0.28 + mouth_open * 0.10),
+	]), unit), shadow)
+
+	for index: int in 7:
+		var orbit := elapsed * (0.8 + index * 0.09) + float(index)
+		var radius := unit * (0.33 + float(index % 3) * 0.07)
+		var fragment := Vector2(cos(orbit), sin(orbit * 0.73)) * radius
+		draw_rect(
+			Rect2(fragment - Vector2.ONE * unit * 0.006, Vector2.ONE * unit * 0.012),
+			Color(cold.r, cold.g, cold.b, (1.0 - scare_progress) * 0.34)
+		)
 
 
 func _draw_burning_eye(center: Vector2, unit: float, color: Color) -> void:
@@ -473,6 +418,11 @@ func _draw_interference() -> void:
 		var bar_width := size.x * (0.18 + fposmod(index * 0.173, 0.56))
 		var bar_x := fposmod(index * 239.0 + elapsed * 97.0, size.x + bar_width) - bar_width
 		var bar_color := Color(0.86, 0.02, 0.025, 0.12 + scare_progress * 0.12)
-		if index % 2 == 0:
+		if killer_variant == &"darkness":
+			if index % 2 == 0:
+				bar_color = Color(0.12, 0.38, 0.92, 0.08 + scare_progress * 0.13)
+			else:
+				bar_color = Color(0.46, 0.08, 0.68, 0.07 + scare_progress * 0.11)
+		elif index % 2 == 0:
 			bar_color = Color(0.05, 0.72, 0.82, 0.09 + scare_progress * 0.1)
 		draw_rect(Rect2(bar_x, bar_y, bar_width, bar_height), bar_color)

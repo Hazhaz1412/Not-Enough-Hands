@@ -194,6 +194,21 @@ position = Vector3(0, 0, -1.2)
 [node name="InsideSpawn" type="Marker3D" parent="."]
 position = Vector3(0, 0, 1.35)
 
+[node name="DoorGhostPosition_A" type="Marker3D" parent="." groups=["door_ghost_positions"]]
+position = Vector3(-3, 0, -1.8)
+
+[node name="DoorGhostPosition_B" type="Marker3D" parent="." groups=["door_ghost_positions"]]
+position = Vector3(-1.5, 0, -3.6)
+
+[node name="DoorGhostPosition_C" type="Marker3D" parent="." groups=["door_ghost_positions"]]
+position = Vector3(0.2, 0, -4.6)
+
+[node name="DoorGhostPosition_D" type="Marker3D" parent="." groups=["door_ghost_positions"]]
+position = Vector3(1.6, 0, -3.4)
+
+[node name="DoorGhostPosition_E" type="Marker3D" parent="." groups=["door_ghost_positions"]]
+position = Vector3(3, 0, -1.7)
+
 [node name="WarningAudio" type="AudioStreamPlayer3D" parent="."]
 position = Vector3(0, 1.25, 0)
 stream = ExtResource("2_scratch")

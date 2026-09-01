@@ -1,0 +1,292 @@
+[gd_scene load_steps=17 format=3]
+
+; Compact test: one camera shows all three connected zones.
+
+[ext_resource type="Script" path="res://tests/darkness_ghost_cycle_test.gd" id="1_controller"]
+[ext_resource type="Script" path="res://power/power_manager.gd" id="2_power"]
+[ext_resource type="Script" path="res://power/electrical_zone.gd" id="3_zone"]
+[ext_resource type="Script" path="res://power/electrical_device.gd" id="4_device"]
+[ext_resource type="PackedScene" path="res://ghosts/darkness_ghost.tscn" id="5_ghost"]
+
+[sub_resource type="Environment" id="Environment_test"]
+background_mode = 1
+background_color = Color(0.008, 0.011, 0.02, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.09, 0.12, 0.2, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.9
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(30, 0.12, 9)
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(30, 0.12, 9)
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.055, 0.065, 0.09, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Zone1Material"]
+albedo_color = Color(0.17, 0.07, 0.18, 1)
+emission_enabled = true
+emission = Color(0.12, 0.015, 0.14, 1)
+emission_energy_multiplier = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Zone2Material"]
+albedo_color = Color(0.055, 0.12, 0.18, 1)
+emission_enabled = true
+emission = Color(0.01, 0.07, 0.16, 1)
+emission_energy_multiplier = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Zone3Material"]
+albedo_color = Color(0.08, 0.18, 0.13, 1)
+emission_enabled = true
+emission = Color(0.01, 0.13, 0.06, 1)
+emission_energy_multiplier = 0.6
+
+[sub_resource type="BoxMesh" id="ZoneFloorMesh"]
+size = Vector3(8.6, 0.04, 8.2)
+
+[sub_resource type="CylinderMesh" id="LampMesh"]
+top_radius = 0.18
+bottom_radius = 0.3
+height = 0.28
+
+[sub_resource type="StandardMaterial3D" id="LampMaterial"]
+albedo_color = Color(0.8, 0.86, 1, 1)
+emission_enabled = true
+emission = Color(0.36, 0.48, 1, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="StandardMaterial3D" id="DividerMaterial"]
+albedo_color = Color(0.16, 0.18, 0.25, 1)
+metallic = 0.2
+roughness = 0.65
+
+[sub_resource type="BoxMesh" id="DividerMesh"]
+size = Vector3(0.24, 3.5, 7.0)
+
+[node name="DarknessGhostCycleTest" type="Node3D"]
+script = ExtResource("1_controller")
+test_expansion_seconds = 15.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_test")
+
+[node name="PowerManager" type="Node" parent="."]
+script = ExtResource("2_power")
+max_power = 10000.0
+current_power = 10000.0
+enable_power_drain = false
+auto_register_house_lights = false
+
+[node name="ElectricalZones" type="Node" parent="."]
+
+[node name="Z01_B1_WEST" type="Node" parent="ElectricalZones"]
+script = ExtResource("3_zone")
+zone_id = &"Z01_B1_WEST"
+display_name = "ZONE 01 — KHỞI ĐẦU"
+device_ids = PackedStringArray("ROOM_01")
+
+[node name="Z02_B1_EAST" type="Node" parent="ElectricalZones"]
+script = ExtResource("3_zone")
+zone_id = &"Z02_B1_EAST"
+display_name = "ZONE 02 — ĐANG SÁNG"
+device_ids = PackedStringArray("ROOM_02")
+
+[node name="Z07_F00_EAST" type="Node" parent="ElectricalZones"]
+script = ExtResource("3_zone")
+zone_id = &"Z07_F00_EAST"
+display_name = "ZONE 03 — ĐANG SÁNG"
+device_ids = PackedStringArray("ROOM_03")
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("FloorMesh")
+material_override = SubResource("FloorMaterial")
+
+[node name="FloorCollision" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FloorCollision"]
+shape = SubResource("FloorShape")
+
+[node name="Zone01Floor" type="MeshInstance3D" parent="."]
+position = Vector3(-9, 0.08, 0)
+mesh = SubResource("ZoneFloorMesh")
+material_override = SubResource("Zone1Material")
+
+[node name="Zone02Floor" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.08, 0)
+mesh = SubResource("ZoneFloorMesh")
+material_override = SubResource("Zone2Material")
+
+[node name="Zone03Floor" type="MeshInstance3D" parent="."]
+position = Vector3(9, 0.08, 0)
+mesh = SubResource("ZoneFloorMesh")
+material_override = SubResource("Zone3Material")
+
+[node name="Divider01" type="MeshInstance3D" parent="."]
+position = Vector3(-4.5, 1.75, 0)
+mesh = SubResource("DividerMesh")
+material_override = SubResource("DividerMaterial")
+
+[node name="Divider02" type="MeshInstance3D" parent="."]
+position = Vector3(4.5, 1.75, 0)
+mesh = SubResource("DividerMesh")
+material_override = SubResource("DividerMaterial")
+
+[node name="RoomMarkers" type="Node3D" parent="."]
+
+[node name="ROOM_01" type="Marker3D" parent="RoomMarkers" groups=["villa_rooms"]]
+position = Vector3(-9, 0.05, 0)
+metadata/room_id = "ROOM_01"
+metadata/clear_point = Vector3(-9, 0.05, 0)
+metadata/room_size = Vector3(8, 3, 8)
+
+[node name="ROOM_02" type="Marker3D" parent="RoomMarkers" groups=["villa_rooms"]]
+position = Vector3(0, 0.05, 0)
+metadata/room_id = "ROOM_02"
+metadata/clear_point = Vector3(0, 0.05, 0)
+metadata/room_size = Vector3(8, 3, 8)
+
+[node name="ROOM_03" type="Marker3D" parent="RoomMarkers" groups=["villa_rooms"]]
+position = Vector3(9, 0.05, 0)
+metadata/room_id = "ROOM_03"
+metadata/clear_point = Vector3(9, 0.05, 0)
+metadata/room_size = Vector3(8, 3, 8)
+
+[node name="Zone01Label" type="Label3D" parent="."]
+position = Vector3(-9, 4.3, 0)
+text = "ZONE 01\nTỐI"
+font_size = 72
+pixel_size = 0.008
+modulate = Color(1, 0.45, 0.85, 1)
+outline_size = 8
+billboard = 1
+
+[node name="Zone02Label" type="Label3D" parent="."]
+position = Vector3(0, 4.3, 0)
+text = "ZONE 02\nSÁNG"
+font_size = 72
+pixel_size = 0.008
+modulate = Color(0.45, 0.75, 1, 1)
+outline_size = 8
+billboard = 1
+
+[node name="Zone03Label" type="Label3D" parent="."]
+position = Vector3(9, 4.3, 0)
+text = "ZONE 03\nSÁNG"
+font_size = 72
+pixel_size = 0.008
+modulate = Color(0.45, 1, 0.68, 1)
+outline_size = 8
+billboard = 1
+
+[node name="Lamp01" type="OmniLight3D" parent="."]
+position = Vector3(-9, 3.6, 0)
+light_color = Color(0.66, 0.5, 1, 1)
+light_energy = 4.0
+omni_range = 7.0
+
+[node name="Model" type="MeshInstance3D" parent="Lamp01"]
+mesh = SubResource("LampMesh")
+material_override = SubResource("LampMaterial")
+
+[node name="Device" type="Node" parent="Lamp01"]
+script = ExtResource("4_device")
+device_id = &"ROOM_01"
+power_consumption = 80.0
+powered_light = NodePath("..")
+
+[node name="Lamp02" type="OmniLight3D" parent="."]
+position = Vector3(0, 3.6, 0)
+light_color = Color(0.5, 0.72, 1, 1)
+light_energy = 4.0
+omni_range = 7.0
+
+[node name="Model" type="MeshInstance3D" parent="Lamp02"]
+mesh = SubResource("LampMesh")
+material_override = SubResource("LampMaterial")
+
+[node name="Device" type="Node" parent="Lamp02"]
+script = ExtResource("4_device")
+device_id = &"ROOM_02"
+power_consumption = 80.0
+powered_light = NodePath("..")
+
+[node name="Lamp03" type="OmniLight3D" parent="."]
+position = Vector3(9, 3.6, 0)
+light_color = Color(0.45, 1, 0.66, 1)
+light_energy = 4.0
+omni_range = 7.0
+
+[node name="Model" type="MeshInstance3D" parent="Lamp03"]
+mesh = SubResource("LampMesh")
+material_override = SubResource("LampMaterial")
+
+[node name="Device" type="Node" parent="Lamp03"]
+script = ExtResource("4_device")
+device_id = &"ROOM_03"
+power_consumption = 80.0
+powered_light = NodePath("..")
+
+[node name="TestPlayer" type="Node3D" parent="." groups=["players"]]
+position = Vector3(-11.5, 0.95, 2.2)
+
+[node name="PlayerLabel" type="Label3D" parent="TestPlayer"]
+position = Vector3(0, 1.2, 0)
+text = "PLAYER"
+font_size = 48
+pixel_size = 0.006
+modulate = Color(1, 0.9, 0.5, 1)
+outline_size = 6
+billboard = 1
+
+[node name="DarknessGhost" parent="." instance=ExtResource("5_ghost")]
+position = Vector3(-9, 0.05, 0)
+auto_manifest = false
+zone_expansion_seconds = 15.0
+zone_expansion_walk_speed = 1.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(0, 15, 23)
+current = true
+fov = 57.0
+
+[node name="TestUI" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="Panel" type="PanelContainer" parent="TestUI"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 510.0
+offset_bottom = 244.0
+
+[node name="Margin" type="MarginContainer" parent="TestUI/Panel"]
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="Content" type="VBoxContainer" parent="TestUI/Panel/Margin"]
+theme_override_constants/separation = 7
+
+[node name="Title" type="Label" parent="TestUI/Panel/Margin/Content"]
+theme_override_colors/font_color = Color(0.86, 0.72, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "Darkness Ghost — 3 Zone Test"
+
+[node name="Hint" type="Label" parent="TestUI/Panel/Margin/Content"]
+theme_override_colors/font_color = Color(0.8, 0.82, 0.9, 1)
+text = "Ma chờ 15s, đi vào zone sáng, rồi mới tắt điện. Enter: reset | Space: bắt đầu đi ngay\nCamera: WASD di chuyển, Q/E lên-xuống, Shift nhanh, chuột xoay, Tab thả/bắt chuột"
+autowrap_mode = 2
+
+[node name="State" type="Label" parent="TestUI/Panel/Margin/Content"]
+text = "Đang khởi tạo..."
+
+[node name="StartCycle" type="Button" parent="TestUI/Panel/Margin/Content"]
+text = "BẮT ĐẦU LẠI"
+
+[node name="ApproachNow" type="Button" parent="TestUI/Panel/Margin/Content"]
+text = "CHO MA BẮT ĐẦU ĐI (KHÔNG TẮT NGAY)"

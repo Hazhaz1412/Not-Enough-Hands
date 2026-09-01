@@ -1,0 +1,317 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://network/multiplayer_lobby.gd" id="1_lobby"]
+
+[sub_resource type="Gradient" id="Gradient_background"]
+colors = PackedColorArray(0.002, 0.004, 0.006, 1, 0.014, 0.032, 0.037, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture_background"]
+gradient = SubResource("Gradient_background")
+width = 1280
+height = 720
+fill_from = Vector2(0.12, 0.08)
+fill_to = Vector2(0.92, 1)
+
+[sub_resource type="StyleBoxFlat" id="Style_panel"]
+bg_color = Color(0.006, 0.012, 0.016, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.34, 0.37, 0.75)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="Style_stage"]
+bg_color = Color(0.002, 0.005, 0.007, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.12, 0.23, 0.25, 0.8)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="Style_ready_button"]
+bg_color = Color(0.08, 0.3, 0.28, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="Environment" id="Environment_lobby"]
+background_mode = 1
+background_color = Color(0.0015, 0.003, 0.004, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.16, 0.22, 0.23, 1)
+ambient_light_energy = 0.42
+fog_enabled = true
+fog_light_color = Color(0.055, 0.075, 0.078, 1)
+fog_light_energy = 0.45
+fog_density = 0.025
+
+[sub_resource type="StandardMaterial3D" id="Material_floor"]
+albedo_color = Color(0.026, 0.033, 0.034, 1)
+metallic = 0.18
+roughness = 0.74
+
+[sub_resource type="PlaneMesh" id="Mesh_floor"]
+material = SubResource("Material_floor")
+size = Vector2(16, 8)
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.011, 0.017, 0.018, 1)
+roughness = 0.96
+
+[sub_resource type="BoxMesh" id="Mesh_wall"]
+material = SubResource("Material_wall")
+size = Vector3(15, 4.5, 0.12)
+
+[sub_resource type="StandardMaterial3D" id="Material_platform"]
+albedo_color = Color(0.035, 0.048, 0.049, 1)
+metallic = 0.3
+roughness = 0.58
+
+[sub_resource type="BoxMesh" id="Mesh_platform"]
+material = SubResource("Material_platform")
+size = Vector3(6.4, 0.08, 1.65)
+
+[node name="MultiplayerLobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("GradientTexture_background")
+expand_mode = 1
+
+[node name="Shade" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.2)
+
+[node name="PageMargin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 48
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 48
+theme_override_constants/margin_bottom = 30
+
+[node name="Page" type="VBoxContainer" parent="PageMargin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="HBoxContainer" parent="PageMargin/Page"]
+layout_mode = 2
+
+[node name="Titles" type="VBoxContainer" parent="PageMargin/Page/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Title" type="Label" parent="PageMargin/Page/Header/Titles"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.77, 0.91, 0.91, 1)
+theme_override_font_sizes/font_size = 36
+text = "PHÒNG CHỜ"
+
+[node name="RoomLabel" type="Label" parent="PageMargin/Page/Header/Titles"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.38, 0.58, 0.6, 1)
+theme_override_font_sizes/font_size = 15
+text = "UDP 7777  ·  1/4 NGƯỜI"
+
+[node name="LeaveButton" type="Button" parent="PageMargin/Page/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(130, 42)
+layout_mode = 2
+text = "RỜI PHÒNG"
+
+[node name="Main" type="HBoxContainer" parent="PageMargin/Page"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 22
+
+[node name="Players" type="VBoxContainer" parent="PageMargin/Page/Main"]
+custom_minimum_size = Vector2(650, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 9
+
+[node name="PlayerHeader" type="HBoxContainer" parent="PageMargin/Page/Main/Players"]
+layout_mode = 2
+
+[node name="PlayersTitle" type="Label" parent="PageMargin/Page/Main/Players/PlayerHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.56, 0.7, 0.71, 1)
+theme_override_font_sizes/font_size = 18
+text = "ĐỘI CỦA BẠN"
+
+[node name="EmptySlotsLabel" type="Label" parent="PageMargin/Page/Main/Players/PlayerHeader"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.44, 0.45, 1)
+theme_override_font_sizes/font_size = 13
+text = "CÒN 3 CHỖ TRỐNG"
+
+[node name="StageFrame" type="PanelContainer" parent="PageMargin/Page/Main/Players"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("Style_stage")
+
+[node name="StageMargin" type="MarginContainer" parent="PageMargin/Page/Main/Players/StageFrame"]
+layout_mode = 2
+theme_override_constants/margin_left = 2
+theme_override_constants/margin_top = 2
+theme_override_constants/margin_right = 2
+theme_override_constants/margin_bottom = 2
+
+[node name="LineupContainer" type="SubViewportContainer" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin"]
+layout_mode = 2
+size_flags_vertical = 3
+stretch = true
+
+[node name="LineupViewport" type="SubViewport" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer"]
+handle_input_locally = false
+size = Vector2i(900, 560)
+render_target_update_mode = 4
+own_world_3d = true
+
+[node name="LobbyWorld" type="Node3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+environment = SubResource("Environment_lobby")
+
+[node name="BackWall" type="MeshInstance3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+position = Vector3(0, 2.22, 1.7)
+mesh = SubResource("Mesh_wall")
+
+[node name="Floor" type="MeshInstance3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+mesh = SubResource("Mesh_floor")
+
+[node name="Platform" type="MeshInstance3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+position = Vector3(0, 0.02, 0.02)
+mesh = SubResource("Mesh_platform")
+
+[node name="Lineup" type="Node3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+unique_name_in_owner = true
+
+[node name="LineupCamera" type="Camera3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+unique_name_in_owner = true
+position = Vector3(0, 1.22, -5.4)
+current = true
+fov = 42.0
+
+[node name="KeyLight" type="OmniLight3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+position = Vector3(-3.2, 4.4, -3.1)
+light_color = Color(0.62, 0.78, 0.8, 1)
+light_energy = 7.0
+shadow_enabled = true
+omni_range = 10.0
+
+[node name="FillLight" type="OmniLight3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+position = Vector3(3.6, 3.1, -2.2)
+light_color = Color(0.43, 0.64, 0.58, 1)
+light_energy = 4.2
+omni_range = 9.0
+
+[node name="RimLight" type="OmniLight3D" parent="PageMargin/Page/Main/Players/StageFrame/StageMargin/LineupContainer/LineupViewport/LobbyWorld"]
+position = Vector3(0, 2.3, 1.15)
+light_color = Color(0.18, 0.46, 0.5, 1)
+light_energy = 2.5
+omni_range = 6.0
+
+[node name="ControlPanel" type="PanelContainer" parent="PageMargin/Page/Main"]
+custom_minimum_size = Vector2(350, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("Style_panel")
+
+[node name="Margin" type="MarginContainer" parent="PageMargin/Page/Main/ControlPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 30
+
+[node name="Content" type="VBoxContainer" parent="PageMargin/Page/Main/ControlPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Heading" type="Label" parent="PageMargin/Page/Main/ControlPanel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.9, 0.9, 1)
+theme_override_font_sizes/font_size = 25
+text = "CHUẨN BỊ"
+
+[node name="Description" type="Label" parent="PageMargin/Page/Main/ControlPanel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.59, 0.6, 1)
+text = "Mỗi người vào phòng sẽ xuất hiện trực tiếp trong đội hình. Tên và trạng thái sẵn sàng được hiển thị trên đầu nhân vật."
+autowrap_mode = 2
+
+[node name="ReadyCountLabel" type="Label" parent="PageMargin/Page/Main/ControlPanel/Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.37, 0.83, 0.69, 1)
+theme_override_font_sizes/font_size = 20
+text = "0/1 ĐÃ SẴN SÀNG"
+
+[node name="Spacer" type="Control" parent="PageMargin/Page/Main/ControlPanel/Margin/Content"]
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HintLabel" type="Label" parent="PageMargin/Page/Main/ControlPanel/Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.66, 0.67, 1)
+text = "Chờ mọi người bấm SẴN SÀNG."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="ReadyButton" type="Button" parent="PageMargin/Page/Main/ControlPanel/Margin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("Style_ready_button")
+text = "SẴN SÀNG"
+
+[node name="StartButton" type="Button" parent="PageMargin/Page/Main/ControlPanel/Margin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "BẮT ĐẦU VILLA"
+
+[node name="StatusLabel" type="Label" parent="PageMargin/Page"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 25)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.58, 0.6, 1)
+text = "Phòng đã mở. Đang chờ người chơi…"
+horizontal_alignment = 1

@@ -5,6 +5,7 @@ signal downed_changed(downed: bool)
 signal became_spectator()
 signal door_minigame_started(door: Node)
 signal door_minigame_finished()
+signal fusebox_minigame_started(fusebox: Node)
 signal hunter_trap_changed(trapped: bool)
 signal toilet_ghost_stun_changed(active: bool)
 
@@ -146,6 +147,7 @@ var hunter_trap_source: Node3D
 @onready var jumpscare: JumpscareController = $Jumpscare
 @onready var footstep_players: Array[AudioStreamPlayer3D] = [$FootstepA, $FootstepB]
 @onready var door_minigame: Node3D = get_node_or_null("DoorGhostMinigame") as Node3D
+@onready var fusebox_minigame: CanvasLayer = get_node_or_null("FuseboxMinigame") as CanvasLayer
 @onready var equipment: PlayerEquipment = $Equipment
 @onready var bladder: PlayerBladder = $Bladder
 
@@ -382,6 +384,7 @@ func _hunter_gaze_is_blocked(from: Vector3, to: Vector3) -> bool:
 		[get_rid()]
 	)
 	return not get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_local_player():
@@ -1620,6 +1623,24 @@ func is_door_minigame_active() -> bool:
 		and bool(door_minigame.call("is_running"))
 
 
+func start_fusebox_minigame(fusebox: Node) -> bool:
+	if not is_alive \
+		or not fusebox_minigame \
+		or _is_any_minigame_active() \
+		or not is_instance_valid(fusebox):
+		return false
+	if not fusebox_minigame.has_method("start") or not bool(fusebox_minigame.call("start", self, fusebox)):
+		return false
+	fusebox_minigame_started.emit(fusebox)
+	return true
+
+
+func is_fusebox_minigame_active() -> bool:
+	return fusebox_minigame != null \
+		and fusebox_minigame.has_method("is_running") \
+		and bool(fusebox_minigame.call("is_running"))
+
+
 ## Called by a Toilet's own script when interacted with - mirrors
 ## start_door_minigame(): the toilet never reaches into player internals,
 ## it just calls this public API the same way PickupItem/LightSwitch do.
@@ -1719,8 +1740,15 @@ func owns_remote_encounter(target: Node, starter: StringName = &"") -> bool:
 		and (starter.is_empty() or _remote_encounter_starter == starter)
 
 
+## Shared "freeze movement/look, don't fight the minigame for input" gate.
+## Covers every minigame that can own the screen: door, fusebox, toilet, and
+## breaker. The fusebox minigame deliberately never calls
+## acquire_minigame_ghost_safety - a miss there is meant to be heard - so
+## ghost suspension stays keyed off the door minigame alone; this only covers
+## input/movement ownership.
 func _is_any_minigame_active() -> bool:
 	return is_door_minigame_active() \
+		or is_fusebox_minigame_active() \
 		or is_toilet_minigame_active() \
 		or is_breaker_minigame_active() \
 		or is_remote_encounter_active()

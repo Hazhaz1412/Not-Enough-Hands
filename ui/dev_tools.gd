@@ -70,6 +70,7 @@ func _ready() -> void:
 	$Panel/Margin/Scroll/Content/SpawnHunter.pressed.connect(spawn_hunter)
 	$Panel/Margin/Scroll/Content/SpawnDarknessGhost.pressed.connect(spawn_darkness_ghost)
 	$Panel/Margin/Scroll/Content/DoorRow/AttackDoor.pressed.connect(force_selected_door_attack)
+	$Panel/Margin/Scroll/Content/ForceBlackout.pressed.connect(force_blackout)
 	$Panel/Margin/Scroll/Content/AllZonesOn.pressed.connect(func() -> void: set_all_zones_powered(true))
 	$Panel/Margin/Scroll/Content/AllZonesOff.pressed.connect(func() -> void: set_all_zones_powered(false))
 	$Panel/Margin/Scroll/Content/RechargePower.pressed.connect(recharge_house_power)
@@ -580,6 +581,22 @@ func force_selected_door_attack() -> bool:
 		else "Không thể tấn công cửa %02d (cửa có thể đã vỡ)." % entrance_id
 	)
 	return started
+
+
+## Zeroes current_power and leaves PowerManager's own _process() to raise the
+## real blackout signal/state on the next frame, rather than poking
+## is_blackout directly and risking it disagreeing with current_power.
+func force_blackout() -> bool:
+	var power_manager := get_tree().get_first_node_in_group("power_manager")
+	if not power_manager:
+		status_label.text = "Không có PowerManager trong scene này."
+		return false
+	if bool(power_manager.get("is_blackout")):
+		status_label.text = "Đã mất điện rồi."
+		return false
+	power_manager.set("current_power", 0.0)
+	status_label.text = "Đã ngắt điện (dev)."
+	return true
 
 
 # --- electrical-zone testing -------------------------------------------------

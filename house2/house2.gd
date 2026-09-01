@@ -71,6 +71,8 @@ const FURNITURE_TIRE: PackedScene = preload(FURNITURE_ROOT + "Tire.fbx")
 const FURNITURE_TABLE_LAMP: PackedScene = preload(FURNITURE_ROOT + "Table Lamp 1.fbx")
 const FURNITURE_CEILING_LAMP: PackedScene = preload(FURNITURE_ROOT + "Ceiling Lamp 2.fbx")
 
+const LIGHT_SOURCE: PackedScene = preload("res://props/light_source.tscn")
+
 const HOUSE_X_MIN := -9.0
 const HOUSE_X_MAX := 9.0
 const HOUSE_Z_MIN := -6.0
@@ -825,6 +827,12 @@ func _add_furniture_bed(parent: Node3D, bed_name: String, origin: Vector3) -> vo
 		bed_name + "Sheets",
 		origin + Vector3(0, 0.52, 0)
 	)
+## Every authored room light is a LightSource instance rather than a bare
+## OmniLight3D, so each one can be switched off directly and goes dark on its
+## own during a PowerManager blackout - the fusebox/blackout system now has
+## something real to darken. The inner Light3D still joins
+## "flickering_house_lights" exactly as before, so HouseLightFlicker keeps
+## working unchanged (light_flicker_smoke.gd asserts this).
 func _add_light(
 	parent: Node3D,
 	light_name: String,
@@ -834,16 +842,28 @@ func _add_light(
 	range_value: float,
 	shadows := false
 ) -> void:
-	var light := OmniLight3D.new()
-	light.name = light_name
-	light.position = position
+	var light_source := LIGHT_SOURCE.instantiate()
+	light_source.name = light_name
+	light_source.position = position
+	light_source.directly_toggleable = true
+
+	var light := light_source.get_node("Light") as OmniLight3D
 	light.light_color = color
 	light.light_energy = energy
 	light.omni_range = range_value
 	light.omni_attenuation = 1.35
 	light.shadow_enabled = shadows
 	light.add_to_group("flickering_house_lights")
-	parent.add_child(light)
+
+	# The fixture loop below already places a proper Ceiling Lamp/wall-bulb
+	# mesh near this exact position - LightSource's own placeholder bulb
+	# would just double up on top of it, and would otherwise pick up a
+	# redundant trimesh collider from main.gd's generated-collision pass.
+	var placeholder_bulb := light_source.get_node("Bulb")
+	light_source.remove_child(placeholder_bulb)
+	placeholder_bulb.free()
+
+	parent.add_child(light_source)
 
 
 func _material(color: Color, roughness: float, metallic := 0.0) -> StandardMaterial3D:

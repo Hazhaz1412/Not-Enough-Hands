@@ -1,0 +1,45 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://power/fusebox.gd" id="1_script"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_body"]
+size = Vector3(0.5, 0.7, 0.18)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metal"]
+albedo_color = Color(0.24, 0.24, 0.26, 1)
+metallic = 0.6
+roughness = 0.55
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_body"]
+size = Vector3(0.5, 0.7, 0.18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_indicator"]
+size = Vector3(0.12, 0.03, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_indicator"]
+albedo_color = Color(0.85, 0.15, 0.1, 1)
+emission_enabled = true
+emission = Color(0.85, 0.15, 0.1, 1)
+emission_energy_multiplier = 3.0
+
+[node name="Fusebox" type="StaticBody3D"]
+collision_layer = 3
+script = ExtResource("1_script")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_body")
+surface_material_override/0 = SubResource("StandardMaterial3D_metal")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_body")
+
+[node name="Indicator" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.28, 0.095)
+mesh = SubResource("BoxMesh_indicator")
+surface_material_override/0 = SubResource("StandardMaterial3D_indicator")
+
+[node name="IndicatorLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.28, 0.13)
+light_color = Color(0.85, 0.15, 0.1, 1)
+light_energy = 0.7
+omni_range = 1.4

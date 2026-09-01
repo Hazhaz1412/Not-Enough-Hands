@@ -505,6 +505,17 @@ breaches past the cap are still holes the player has to live with, they just do
 not add another creature. The scene's own dormant `HunterGhost` stays out of it
 entirely, as a DevTools template with `entry_enabled` off.
 
+The one behavioural difference is the huntsman. House2 has a single one that
+walks in through whichever breach it likes; the villa is big enough that one
+creature is not a threat to a spread-out team, so `villa_main.gd` spawns a fresh
+huntsman *at* each entrance that breaks — capped at `MAX_BREACH_HUNTERS` (3).
+The cap matters because a huntsman never leaves: without it, seven lost doors
+would mean seven bodies in the building for the rest of the night, and the
+fourth one is a frame-rate problem before it is a difficulty problem. Further
+breaches past the cap are still holes the player has to live with, they just do
+not add another creature. The scene's own dormant `HunterGhost` stays out of it
+entirely, as a DevTools template with `entry_enabled` off.
+
 | | House2 | Villa |
 |---|---|---|
 | Footprint | 18 × 12 m | 80 × 60 m, 40 × 30 cells of 2 m |

@@ -162,8 +162,11 @@ func _update_time_label() -> void:
 
 
 func _player_is_in_door_minigame() -> bool:
-	return _player != null \
-		and _player.has_method("is_door_minigame_active") \
+	if _player == null:
+		return false
+	if _player.has_method("is_any_minigame_active"):
+		return bool(_player.call("is_any_minigame_active"))
+	return _player.has_method("is_door_minigame_active") \
 		and bool(_player.call("is_door_minigame_active"))
 
 

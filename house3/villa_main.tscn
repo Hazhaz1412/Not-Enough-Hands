@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://bskv7nqtwugr7" path="res://house3/villa_main.gd" id="3_villa_main"]
 [ext_resource type="PackedScene" path="res://ghosts/statue_ghost.tscn" id="5_statue"]
 [ext_resource type="Script" uid="uid://d3dtpcwe6oum" path="res://door/door_attack_director.gd" id="6_door_director"]
-[ext_resource type="Script" path="res://director/game_director.gd" id="6_game_director"]
+[ext_resource type="Script" uid="uid://db3nqdyr5g1w2" path="res://director/game_director.gd" id="6_game_director"]
 [ext_resource type="PackedScene" uid="uid://dxuvjfgvxm4xr" path="res://assets/map/retro_modular_house/retro_modular_house/models/misc/stairs/stair_big_01.fbx" id="6_j6y7q"]
 [ext_resource type="PackedScene" uid="uid://ljpkrpjrjxsd" path="res://assets/map/retro_modular_house/retro_modular_house/models/floors/floor_2x2.fbx" id="7_4g01i"]
 [ext_resource type="Script" uid="uid://c5asiy3bo4o3p" path="res://audio/house_ambience.gd" id="7_house_ambience"]

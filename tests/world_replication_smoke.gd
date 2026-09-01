@@ -52,6 +52,10 @@ func _run() -> void:
 		return
 	if not _test_spawn_without_a_session():
 		return
+	if not _test_runtime_entity_ids_keep_their_identity():
+		return
+	if not _test_authored_ghost_paths_keep_their_identity():
+		return
 	if not _test_ghosts_expose_a_presentation_seam():
 		return
 	if not await _test_an_encounter_is_handed_to_its_owner():
@@ -59,7 +63,7 @@ func _run() -> void:
 	print(
 		'World replication smoke test passed: offline and server simulate, a client does not, '
 		+ 'clock/door/power/brazier all take the server state they are given, '
-		+ 'every ghost still exposes the seam a client animates it through, '
+		+ 'runtime ids and authored ghost paths preserve identity, every ghost exposes its presentation seam, '
 		+ 'and an encounter is handed to the peer that started it.'
 	)
 	quit()
@@ -248,6 +252,7 @@ func _test_ghosts_expose_a_presentation_seam() -> bool:
 		'res://ghosts/hunter_ghost.tscn',
 		'res://ghosts/crawler_ghost.tscn',
 		'res://ghosts/statue_ghost.tscn',
+		'res://ghosts/darkness_ghost.tscn',
 	]:
 		var ghost := (load(path) as PackedScene).instantiate()
 		var has_seam: bool = ghost.has_method('_update_presentation')
@@ -263,10 +268,62 @@ func _test_ghosts_expose_a_presentation_seam() -> bool:
 	return true
 
 
+## Authored ghosts used to be addressed only by their index in each peer's
+## locally collected list. Adding Darkness to one build shifted Hunter and
+## Statue on another build. Reverse the receiver's private list here: a keyed
+## packet must still manifest Hunter and must never put that state on Statue.
+func _test_authored_ghost_paths_keep_their_identity() -> bool:
+	var world := Node3D.new()
+	world.name = "AuthoredGhostIdentityWorld"
+	root.add_child(world)
+	current_scene = world
+
+	var hunter := (load("res://ghosts/hunter_ghost.tscn") as PackedScene).instantiate() as Node3D
+	hunter.name = "HunterGhost"
+	world.add_child(hunter)
+	var statue := (load("res://ghosts/statue_ghost.tscn") as PackedScene).instantiate() as Node3D
+	statue.name = "StatueGhost"
+	world.add_child(statue)
+
+	var replicator := (load("res://network/world_replicator.gd") as Script).new() as Node
+	root.add_child(replicator)
+	replicator.set_physics_process(false)
+	replicator.call("_bind_scene_if_changed")
+
+	hunter.call("_set_manifested", true)
+	statue.call("_set_manifested", false)
+	hunter.global_position = Vector3(12.0, 1.0, -4.0)
+	var packet := replicator.call("_collect_ghosts") as Array
+	hunter.call("_set_manifested", false)
+
+	var receiver_order := replicator.get("_ghosts") as Array
+	receiver_order.reverse()
+	replicator.set("_ghosts", receiver_order)
+	replicator.call("_apply_authored_ghosts", packet)
+
+	var hunter_body := hunter.get_node_or_null("VisualRoot") as Node3D
+	var statue_body := statue.get_node_or_null("VisualRoot") as Node3D
+	var passed := hunter_body != null and hunter_body.visible \
+		and statue_body != null and not statue_body.visible \
+		and hunter.global_position.is_equal_approx(Vector3(12.0, 1.0, -4.0))
+
+	current_scene = null
+	replicator.free()
+	world.free()
+	if not passed:
+		return _fail(
+			"An authored ghost packet followed list order instead of its NodePath; "
+			+ "Darkness/Hunter/Statue can still swap bodies."
+		)
+	return true
+
+
 ## Outside a session - single-player, every smoke test, every tools script -
 ## spawn() has to be the plain add_child it replaced, whether or not a
 ## replicator happens to be in the tree.
 func _test_spawn_without_a_session() -> bool:
+	_become_offline()
+	_manager().set("session_active", false)
 	var parent := Node3D.new()
 	root.add_child(parent)
 	var node := WorldNet.spawn(
@@ -289,6 +346,101 @@ func _test_spawn_without_a_session() -> bool:
 		parent.queue_free()
 		return _fail('spawn() placed the node at %s, not where it was asked.' % node.global_position)
 	parent.queue_free()
+	return true
+
+
+func _test_runtime_entity_ids_keep_their_identity() -> bool:
+	var world := Node3D.new()
+	world.name = "RuntimeIdentityWorld"
+	root.add_child(world)
+	current_scene = world
+	var replicator := (load("res://network/world_replicator.gd") as Script).new() as Node
+	root.add_child(replicator)
+
+	_become_server()
+	var brazier := replicator.call(
+		"spawn",
+		load("res://items/totem_brazier.tscn") as PackedScene,
+		world,
+		Vector3.ZERO,
+		0.0,
+		"",
+		"RitualBrazier"
+	) as Node3D
+	var hunter := replicator.call(
+		"spawn",
+		load("res://ghosts/hunter_ghost.tscn") as PackedScene,
+		world,
+		Vector3(2.0, 0.0, 0.0),
+		0.0,
+		"",
+		"BreachHunter01"
+	) as Node3D
+	var ids: Dictionary = replicator.get("_entity_ids")
+	var brazier_id := int(ids.get(brazier.get_instance_id(), 0))
+	var hunter_id := int(ids.get(hunter.get_instance_id(), 0))
+	if brazier_id <= 0 or hunter_id <= 0 or brazier_id == hunter_id:
+		_become_offline()
+		current_scene = null
+		replicator.free()
+		world.free()
+		return _fail("Binding the map reset a runtime id and reused it for the hunter.")
+	hunter.call("_set_manifested", true)
+	var authoritative_snapshot: Dictionary = replicator.call("_build_snapshot")
+	hunter.call("_set_manifested", false)
+
+	# Even if a stale/corrupt packet names an item id, ghost-shaped state must not
+	# move it. This is the last line of defence against a campfire chasing players.
+	_become_client()
+	replicator.call("_apply_snapshot", authoritative_snapshot)
+	var hunter_body := hunter.get_node_or_null("VisualRoot") as Node3D
+	if hunter_body == null or not hunter_body.visible:
+		_become_offline()
+		current_scene = null
+		replicator.free()
+		world.free()
+		return _fail("A reliable snapshot did not manifest its runtime hunter.")
+	var brazier_position := brazier.global_position
+	replicator.call("_sync_fast", [], [[
+		brazier_id,
+		Vector3(50.0, 0.0, 0.0),
+		1.0,
+		0,
+		true,
+		Vector3(8.0, 0.0, 0.0),
+		true,
+	]])
+	if not brazier.global_position.is_equal_approx(brazier_position):
+		_become_offline()
+		current_scene = null
+		replicator.free()
+		world.free()
+		return _fail("Ghost fast-state was applied to the ritual brazier.")
+
+	# A reliable spawn carrying a different scene for an occupied id replaces the
+	# stale node instead of silently preserving its old identity.
+	replicator.call(
+		"_spawn_entity",
+		brazier_id,
+		"res://ghosts/hunter_ghost.tscn",
+		".",
+		Vector3(4.0, 0.0, 0.0),
+		0.0,
+		"RecoveredHunter"
+	)
+	var entities: Dictionary = replicator.get("_entities")
+	var recovered := entities.get(brazier_id) as Node
+	if not is_instance_valid(recovered) or not recovered.is_in_group(&"hostile_ghosts"):
+		_become_offline()
+		current_scene = null
+		replicator.free()
+		world.free()
+		return _fail("An id collision did not replace the stale item with the hunter scene.")
+
+	_become_offline()
+	current_scene = null
+	replicator.free()
+	world.free()
 	return true
 
 

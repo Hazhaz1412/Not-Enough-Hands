@@ -8,9 +8,11 @@ extends SceneTree
 ## grab feel like a grab instead of a slow reach, and that would rot silently
 ## the moment somebody retuned a number:
 ##
-##   * the slash animation runs at the sped-up rate while it is the slash, and
-##     the body is back to normal speed the instant it is not;
-##   * commitment to contact is a fifth of a second, not half a second;
+##   * the grab plays the attack clip, and the body's own animation rate is left
+##     alone the whole way through - the slash is a clip change, not a rate
+##     change, because nothing in hunter_ghost.gd drives set_clip_speed();
+##   * commitment to contact is exactly the `seize_windup` half-second, so a
+##     quiet retune of the only dodge window this creature has fails here;
 ##   * a player who simply holds the back key cannot walk out of a grab that has
 ##     already committed, while a player who sprints still can.
 ##
@@ -47,26 +49,28 @@ func _run() -> void:
 		_fail("Failed to load the hunter scene.")
 		return
 
-	if not await _test_only_the_slash_is_sped_up():
+	if not await _test_the_grab_plays_the_attack_clip():
 		return
-	if not await _test_commitment_to_contact_is_fast():
+	if not await _test_commitment_to_contact_is_the_windup():
 		return
 	if not await _test_backpedal_cannot_escape_a_committed_grab():
 		return
 	if not await _test_a_sprint_still_escapes():
 		return
 
-	print("Hunter slash smoke test passed: slash-only speed-up, commit timing, "
-		+ "backpedal is caught, sprint still escapes.")
+	print("Hunter slash smoke test passed: attack clip with the body rate left "
+		+ "alone, commit timing, backpedal is caught, sprint still escapes.")
 	quit()
 
 
 # ------------------------------------------------------------------- tests ---
 
-## The whole body runs off one AnimationPlayer, so "speed up the slash" can only
-## mean "hold the rate up while the slash is playing". This is the check that it
-## is not left held afterwards, which would speed up the idle and the walk too.
-func _test_only_the_slash_is_sped_up() -> bool:
+## The whole body runs off one AnimationPlayer, so anything that touched its rate
+## for the slash would be speeding up the idle and the walk too unless it put the
+## rate back. Nothing does touch it today - the grab is selected by clip, in
+## _clip_for_state() - so the rate is pinned at both ends and in the middle, and
+## a future speed-up that forgets to restore it fails here.
+func _test_the_grab_plays_the_attack_clip() -> bool:
 	var hunter := await _spawn_hunter(Vector3.ZERO)
 	var player := _spawn_player(Vector3(0.0, 0.9, -2.0))
 	await physics_frame
@@ -82,15 +86,13 @@ func _test_only_the_slash_is_sped_up() -> bool:
 	if not await _wait_for_state(hunter, HunterState_SEIZING, 6.0):
 		return _fail("The Huntsman never reached its grab.")
 
-	var expected: float = hunter.get("seize_clip_speed")
-	if expected <= 1.0:
-		return _fail("seize_clip_speed is %.2f; the slash would be no faster than the walk." % expected)
-	if not is_equal_approx(animation.speed_scale, expected):
-		return _fail("Slash played at %.2f instead of seize_clip_speed %.2f." % [
-			animation.speed_scale, expected
-		])
+	if not is_equal_approx(animation.speed_scale, 1.0):
+		return _fail(
+			"The body ran at %.2f during the grab; nothing should be driving its rate."
+			% animation.speed_scale
+		)
 	if hunter.get_node("VisualRoot").get_current_clip() != &"Attack":
-		return _fail("The sped-up clip is not the attack clip.")
+		return _fail("The grab did not play the attack clip.")
 
 	# Out the far side of the grab: everything else runs at its own rate again.
 	await create_timer(1.2).timeout
@@ -104,13 +106,16 @@ func _test_only_the_slash_is_sped_up() -> bool:
 	return true
 
 
-## Commit to contact, measured off the creature's own signals rather than off
-## the export, so retuning the export cannot quietly move the hit.
+## Commit to contact, measured off the creature's own signals and then checked
+## twice: against the export, which says the wind-up timer really is what gates
+## the kill, and against the value the export is meant to hold, which is what
+## makes a quiet retune of the only dodge window in the creature fail here
+## instead of only in play.
 ##
 ## Counted in physics frames, not wall clock: headless runs the loop as fast as
-## it can, so a fifth of a second of gameplay goes by in a tenth of a second of
-## real time and a clock-based check would read whatever the machine felt like.
-func _test_commitment_to_contact_is_fast() -> bool:
+## it can, so half a second of gameplay goes by in a fraction of that in real
+## time and a clock-based check would read whatever the machine felt like.
+func _test_commitment_to_contact_is_the_windup() -> bool:
 	var hunter := await _spawn_hunter(Vector3.ZERO)
 	var player := _spawn_player(Vector3(0.0, 0.9, -2.0))
 	await physics_frame
@@ -128,14 +133,17 @@ func _test_commitment_to_contact_is_fast() -> bool:
 		return _fail("The Huntsman never landed its grab on a stationary player.")
 
 	var elapsed := float(landed[0] - committed[0]) * _tick
-	# A frame either side: the resolve happens on the physics tick the timer
-	# runs out on, not on the exact instant.
-	if elapsed > 0.30:
-		return _fail("Commitment to contact took %.3fs; the slash is back in slow motion." % elapsed)
-	if elapsed < 0.08:
+	var windup: float = hunter.get("seize_windup")
+	if not is_equal_approx(windup, 0.5):
 		return _fail(
-			"Commitment to contact took %.3fs, which leaves no wind-up to read at all."
-			% elapsed
+			("seize_windup is %.2fs, not the 0.5s the class docstring calls the only " % windup)
+			+ "dodge window there is. If that retune is deliberate, move this number with it."
+		)
+	# A frame either side: the resolve happens on the physics tick the timer runs
+	# out on, not on the exact instant.
+	if absf(elapsed - windup) > _tick * 2.0:
+		return _fail(
+			"Commitment to contact took %.3fs against a %.2fs wind-up." % [elapsed, windup]
 		)
 
 	await _despawn(hunter)
@@ -230,7 +238,6 @@ func _spawn_hunter(at: Vector3) -> CharacterBody3D:
 
 func _spawn_player(at: Vector3) -> CharacterBody3D:
 	var player := (load("res://player/player.tscn") as PackedScene).instantiate() as CharacterBody3D
-	player.set("automatic_blink_enabled", false)
 	root.add_child(player)
 	player.global_position = at
 	return player

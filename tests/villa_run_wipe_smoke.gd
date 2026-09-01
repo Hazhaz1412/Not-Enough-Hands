@@ -77,20 +77,39 @@ func _process(delta: float) -> bool:
 	return false
 
 
-## Kills everybody. Spending each player's downed budget first is what makes the
-## first death final: with it left alone the first to fall is only downed, and a
-## downed player is still in the run - which is the distinction being relied on.
+## Reproduces the multiplayer soft-lock: every guest falls into a revivable
+## downed state, then the listen host is killed last. There is nobody standing
+## who can revive the guests, and presenting the host's death must not pause the
+## authoritative server before it schedules the lobby return.
 func _wipe(players: Array) -> void:
 	_wiped = true
 	var ghost := get_first_node_in_group(&"hostile_ghosts") as Node3D
+	var ordered: Array[Node] = []
+	var host: Node = null
 	for node: Node in players:
-		node.set("downed_time_remaining", 0.0)
+		if int(node.get("owner_peer_id")) == 1:
+			host = node
+		else:
+			ordered.append(node)
+	if host:
+		ordered.append(host)
+	for node: Node in ordered:
 		node.call("kill_by_ghost", ghost)
+	var downed_count := 0
 	for node: Node in players:
-		if bool(node.get("is_alive")) or bool(node.get("is_downed")):
+		if bool(node.get("is_alive")):
 			_done = true
-			_fail("a player survived the wipe, so the test proves nothing.")
+			_fail("a standing player survived the wipe, so the test proves nothing.")
 			return
+		if bool(node.get("is_downed")):
+			downed_count += 1
+	if downed_count == 0:
+		_done = true
+		_fail("the wipe created no downed teammate, so it did not reproduce the soft-lock.")
+		return
+	if paused:
+		_done = true
+		_fail("the listen host's death paused the authoritative server.")
 
 
 func _check_lobby_is_open() -> bool:

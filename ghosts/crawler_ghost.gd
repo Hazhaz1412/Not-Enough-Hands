@@ -6,7 +6,7 @@ extends CharacterBody3D
 ## house without competing for the same fear:
 ##
 ##   statue: hunts by sight, freezes the moment you look at it, floor only,
-##           teleports in for a scripted ambush, killed you while you blinked.
+##           teleports in for a scripted ambush, kills the moment you look away.
 ##   crawler: blind. Hunts by SOUND. Does not care that you can see it. Owns
 ##           the walls and the ceiling, so it ignores the floor plan entirely.
 ##
@@ -25,6 +25,9 @@ extends CharacterBody3D
 ##             times. This is the dangerous phase, but it is looking, not
 ##             tracking - a silent player is passed over.
 ##   HUNTING   a noise broke the patrol. It commits to that noise.
+##   LEAVING   it has been on top of somebody for too long, or has just killed
+##             them. It bolts for the far side of the house and is deaf on the
+##             way, so a hunt always ends in the room being handed back.
 ##   RETREAT   it finished its laps without finding anyone: one scream, then it
 ##             is gone until the next cycle.
 ##
@@ -41,6 +44,10 @@ enum CrawlerState {
 	POUNCING,
 	RECOVERING,
 	RETREATING,
+	# Appended rather than slotted in beside RETREATING on purpose: this enum's
+	# ordinal is what WorldReplicator ships to clients, so inserting a value in
+	# the middle would renumber every state above it mid-session.
+	LEAVING,
 }
 
 signal state_changed(new_state: CrawlerState)
@@ -51,6 +58,7 @@ signal patrol_lap_completed(lap: int)
 signal pounce_started(target_point: Vector3)
 signal pounce_missed()
 signal killed_player(player: Node3D)
+signal leaving_area(destination: Vector3)
 signal retreated()
 signal containment_recovered(escaped_position: Vector3, recovered_position: Vector3)
 
@@ -59,10 +67,10 @@ signal containment_recovered(escaped_position: Vector3, recovered_position: Vect
 ## Patrol crawl. Deliberately crippling - less than half a walking player. It is
 ## not chasing anyone at this speed; it is dragging itself across the ceiling
 ## waiting to hear something, and it can be walked away from at leisure.
-@export var crawl_speed: float = 1.15
+@export var crawl_speed: float = 1.45
 ## Closing speed once it has a fix but the noise is too far away to leap at. It
 ## is faster than a patrol and slower than a sprint, so distance still buys time.
-@export var hunting_speed: float = 3.6
+@export var hunting_speed: float = 4.5
 @export var acceleration: float = 26.0
 @export var turn_speed: float = 7.5
 ## How fast the steering direction itself may swing, as distinct from how fast
@@ -175,10 +183,16 @@ signal containment_recovered(escaped_position: Vector3, recovered_position: Vect
 ## here, so crouch-walking is audible only from a few metres. Roughly one floor
 ## of the house rather than the whole building: it has to physically patrol into
 ## your half of the map before your footsteps matter.
-@export var hearing_range: float = 16.0
+##
+## This is the outer edge of hearing, not the edge of the charge. `reach` is
+## this scaled by loudness, and `search_confidence` then splits what it hears in
+## two at 80% of that reach: a walking player is run down inside 16 m and only
+## groped around for between 16 and 20 m, which is the band where the creature
+## is looking for you rather than coming for you.
+@export var hearing_range: float = 20.0
 ## Player speed treated as maximum loudness. Slightly above the player's sprint
 ## speed so even sprinting is not quite a 1.0 - there is always a louder noise.
-@export var loud_reference_speed: float = 3.1
+@export var loud_reference_speed: float = 3.9
 @export_range(0.0, 1.0) var crouch_noise_multiplier: float = 0.3
 ## A landing thump is a single loud event no amount of crouching hides.
 @export_range(0.0, 1.0) var landing_noise: float = 0.85
@@ -239,6 +253,24 @@ signal containment_recovered(escaped_position: Vector3, recovered_position: Vect
 ## relocates. Only ever used while no player can see it.
 @export_range(1, 10, 1) var unstick_relocate_after: int = 3
 
+@export_category('Leaving')
+## How close to a living player counts as being on top of them.
+@export var loiter_radius: float = 7.0
+## How long it may stay that close before it gives the room back. It creeps,
+## it listens, and then it goes: without this it has nowhere else to be and
+## simply orbits whoever it last heard for the rest of the hunt, which reads as
+## a stuck creature rather than a hunting one.
+@export var loiter_tolerance: float = 4.5
+## The bolt out. Well above hunting_speed on purpose - leaving has to read as a
+## decision rather than as the same crawl it arrived with, and it has to clear
+## the room fast enough that the player gets a real all-clear out of it.
+@export var leave_speed: float = 9.0
+## How far from every living player it has to get before it resumes the sweep.
+@export var leave_distance: float = 22.0
+## Hard ceiling on one retreat, so an unreachable far corner cannot strand it
+## out here for the rest of the cycle.
+@export var leave_timeout: float = 8.0
+
 @export_category('Retreat')
 ## The scream that ends a failed hunt. It vanishes when this finishes.
 @export var retreat_scream_duration: float = 1.6
@@ -254,12 +286,17 @@ signal containment_recovered(escaped_position: Vector3, recovered_position: Vect
 @export_category('Pounce')
 ## The entire attack. It creeps at `crawl_speed` and then covers this whole
 ## distance in one launch, so range is what you manage, not speed: make a sound
-## anywhere inside this and it is already on you.
-@export var pounce_range: float = 13.0
+## anywhere inside this and it is already on you. Outside it there is no leap at
+## all - it simply walks the noise down, which is what makes this a line the
+## player can actually feel rather than a number.
+@export var pounce_range: float = 10.0
 @export var pounce_min_range: float = 1.4
 ## Short, because the leap is the threat and a long tell would defuse it - but
 ## not zero: this plus the scream is the only frame in which it can be dodged.
 @export var pounce_windup: float = 0.3
+## Deliberately left where it was when the crawl/hunt paces were raised: the
+## leap is a fixed reaction test, and speeding it up shortens a dodge window
+## measured in human reflexes rather than in metres of map.
 @export var pounce_speed: float = 21.0
 @export var pounce_arc: float = 0.22
 ## How far ahead of a moving target it aims. It is blind, so this is guesswork
@@ -308,6 +345,10 @@ var patrol_lap: int = 0
 var patrol_point_timer: float = 0.0
 var patrol_chitter_timer: float = 0.0
 var retreat_timer: float = 0.0
+var loiter_timer: float = 0.0
+var leave_timer: float = 0.0
+var leave_target: Vector3
+var leave_origin: Vector3
 var manifested: bool = true
 var lair_position: Vector3
 var patrol_points: Array[Vector3] = []
@@ -317,6 +358,10 @@ var pounce_timer: float = 0.0
 var pounce_cooldown_timer: float = 0.0
 var pounce_air_time: float = 0.0
 var dev_attack_suspended: bool = false
+## The game director's own hold, kept apart from the flag above because that one
+## is not a dev flag at all: player.gd refcounts it as the minigame safety lock.
+## A director sharing it would release somebody's lock mid-encounter.
+var director_attacks_suspended: bool = false
 var attack_resume_grace_remaining: float = 0.0
 var recovery_timer: float = 0.0
 var regrip_cooldown_timer: float = 0.0
@@ -478,6 +523,7 @@ func _physics_process(delta: float) -> void:
 	_refresh_cling_exclusions()
 	_listen(delta)
 	_update_surface(delta)
+	_track_loiter(delta)
 
 	match state:
 		CrawlerState.OMEN:
@@ -494,6 +540,8 @@ func _physics_process(delta: float) -> void:
 			_update_pouncing(delta)
 		CrawlerState.RECOVERING:
 			_update_recovering(delta)
+		CrawlerState.LEAVING:
+			_update_leaving(delta)
 		CrawlerState.RETREATING:
 			_update_retreating(delta)
 		CrawlerState.DORMANT:
@@ -510,13 +558,51 @@ func _physics_process(delta: float) -> void:
 
 
 func set_dev_attack_suspended(suspended: bool) -> void:
-	if dev_attack_suspended == suspended:
+	_set_attack_suspension(suspended, director_attacks_suspended)
+
+
+## The director's hold on this ghost's attacks. Held separately from the lock
+## above so the two cannot overwrite each other: either one alone blocks, and
+## attacks only resume once both have let go.
+func set_director_attacks_suspended(suspended: bool) -> void:
+	_set_attack_suspension(dev_attack_suspended, suspended)
+
+
+## True while this ghost is a live threat the director has to count against its
+## concurrency budget. Patrolling counts here, unlike the huntsman's: the
+## crawler is only ever on patrol during a hunt, and is absent between them.
+func is_engaged() -> bool:
+	return state in [
+		CrawlerState.OMEN,
+		CrawlerState.PATROL,
+		CrawlerState.HUNTING,
+		CrawlerState.SEARCHING,
+		CrawlerState.POUNCE_WINDUP,
+		CrawlerState.POUNCING,
+	]
+
+
+## Director hook: brings the next hunt forward without starting one. It only
+## ever shortens a wait that is already running, so a cycle already underway is
+## left alone - the director changes the schedule, never a live encounter.
+func request_hunt_soon(within_seconds: float) -> bool:
+	if not active or not hunt_cycle_enabled or state != CrawlerState.HIDDEN:
+		return false
+	hidden_timer = minf(hidden_timer, maxf(within_seconds, 0.0))
+	return true
+
+
+func _set_attack_suspension(dev_held: bool, director_held: bool) -> void:
+	var was_blocked := dev_attack_suspended or director_attacks_suspended
+	dev_attack_suspended = dev_held
+	director_attacks_suspended = director_held
+	var is_blocked := dev_held or director_held
+	if is_blocked == was_blocked:
 		return
-	dev_attack_suspended = suspended
-	if suspended:
+	if is_blocked:
 		attack_resume_grace_remaining = 0.0
 		if state == CrawlerState.POUNCE_WINDUP or state == CrawlerState.POUNCING:
-			scream_audio.stop()
+			WorldNet.stop_shared(scream_audio)
 			pounce_timer = 0.0
 			pounce_air_time = 0.0
 			_brake(1.0)
@@ -531,7 +617,9 @@ func set_dev_attack_suspended(suspended: bool) -> void:
 
 
 func _attacks_blocked() -> bool:
-	return dev_attack_suspended or attack_resume_grace_remaining > 0.0
+	return dev_attack_suspended \
+		or director_attacks_suspended \
+		or attack_resume_grace_remaining > 0.0
 
 
 ## Forces the existing crawler instance into the world near the chosen player.
@@ -567,7 +655,7 @@ func dev_force_spawn(target: CharacterBody3D = null) -> bool:
 	pounce_air_time = 0.0
 	pounce_cooldown_timer = 0.0
 	_begin_patrol()
-	chitter_audio.play()
+	WorldNet.play_shared(chitter_audio)
 	return true
 
 
@@ -672,8 +760,12 @@ func report_noise(position: Vector3, loudness: float, source: Node = null) -> vo
 		hidden_timer -= hidden_timer * noise_impatience * clamped
 		return
 	# During the fly-past it is deaf. It is a scripted crossing, and letting a
-	# noise redirect it mid-dash turns the warning back into an attack.
-	if state == CrawlerState.OMEN or state == CrawlerState.RETREATING:
+	# noise redirect it mid-dash turns the warning back into an attack. Leaving
+	# is deaf for the same reason: it is walking away from a player who is very
+	# probably still making noise, and hearing them would just turn it round.
+	if state == CrawlerState.OMEN \
+		or state == CrawlerState.RETREATING \
+		or state == CrawlerState.LEAVING:
 		return
 
 	var distance := global_position.distance_to(position)
@@ -1070,7 +1162,7 @@ func _begin_omen() -> void:
 		# hunt is exactly what this cycle exists to prevent.
 		if omen_audio_fallback:
 			global_position = _overhead_announce_position()
-			scream_audio.play()
+			WorldNet.play_shared(scream_audio)
 		_begin_patrol()
 		return
 
@@ -1082,7 +1174,7 @@ func _begin_omen() -> void:
 	velocity = (omen_target_point - global_position).normalized() * omen_speed
 	facing_direction = velocity.normalized()
 	_set_manifested(true)
-	chitter_audio.play()
+	WorldNet.play_shared(chitter_audio)
 	_set_state(CrawlerState.OMEN)
 	omen_started.emit(crossing['player'], crossing['from'], crossing['to'])
 
@@ -1196,7 +1288,7 @@ func _update_patrol(delta: float) -> void:
 	if patrol_chitter_timer <= 0.0:
 		patrol_chitter_timer = randf_range(patrol_chitter_interval_min, patrol_chitter_interval_max)
 		if not chitter_audio.playing:
-			chitter_audio.play()
+			WorldNet.play_shared(chitter_audio)
 
 	if patrol_points.is_empty():
 		# No route authored. Sweep around the lair rather than standing still.
@@ -1288,11 +1380,108 @@ func _advance_patrol_point() -> void:
 		_begin_retreat()
 
 
+## The loiter watchdog. Anything that leaves it hovering around one player -
+## an unreachable noise fix, a body it cannot get past, a leap it is not
+## allowed to take - ends the same way: it gives the room back instead of
+## grinding there. Only the phases where it is actually hunting are watched;
+## a leap or the recovery after one is supposed to happen up close.
+func _track_loiter(delta: float) -> void:
+	if state != CrawlerState.PATROL \
+		and state != CrawlerState.HUNTING \
+		and state != CrawlerState.SEARCHING:
+		# Cleared rather than paused, so a hidden/omen/leap phase never hands
+		# the next patrol a timer that is already most of the way to expiry.
+		loiter_timer = 0.0
+		return
+	var nearest := _closest_living_player()
+	if not nearest \
+		or global_position.distance_to(nearest.global_position) > loiter_radius:
+		loiter_timer = 0.0
+		return
+	loiter_timer += delta
+	if loiter_timer >= loiter_tolerance:
+		_begin_leaving()
+
+
+## Hands the area back. Used both by the loiter watchdog and by a kill - a
+## corpse is the one thing guaranteed to still be inside loiter_radius, and
+## standing on it was how the creature used to wedge itself after a hunt.
+func _begin_leaving() -> void:
+	loiter_timer = 0.0
+	leave_timer = leave_timeout
+	leave_target = _farthest_point_from_players()
+	leave_origin = global_position
+	no_progress_time = 0.0
+	_set_state(CrawlerState.LEAVING)
+	leaving_area.emit(leave_target)
+
+
+## The bolt out, at leave_speed and deaf (see report_noise). It ends on
+## whichever comes first: real distance from where it turned round, arrival, or
+## the timeout that stops one bad destination eating the rest of the cycle.
+##
+## Distance is measured from `leave_origin` rather than from the nearest living
+## player on purpose. After a kill there may be no living player left to measure
+## against at all, and the body it has to get off is lying exactly where it
+## started - so "how far have I come" is the question that answers both cases.
+func _update_leaving(delta: float) -> void:
+	leave_timer -= delta
+	if global_position.distance_to(leave_origin) >= leave_distance \
+		or leave_timer <= 0.0 \
+		or global_position.distance_to(leave_target) <= arrive_distance:
+		# Straight back onto the sweep rather than into a hunt: it left with a
+		# noise fix it deliberately ignored, and re-entering HUNTING here would
+		# turn it round on the spot and undo the whole retreat.
+		patrol_point_timer = patrol_point_timeout
+		_set_state(CrawlerState.PATROL if not patrol_points.is_empty() else CrawlerState.SEARCHING)
+		return
+	_crawl_toward(delta, leave_target, leave_speed)
+
+
+## Somewhere else. Every authored patrol marker plus the lair is scored by how
+## far it is from the nearest living player - or, once there is no living player
+## left to measure against, by how far it is from here - and the best one wins.
+##
+## A destination that is not actually further away than where it already stands
+## is no destination at all: the lair is often the room it is standing in, and a
+## fixture with no authored route has nothing but the lair. In that case it just
+## heads away from whoever it was on top of, which is the whole point.
+func _farthest_point_from_players() -> Vector3:
+	var players := _living_players()
+	var candidates := patrol_points.duplicate()
+	candidates.append(lair_position)
+	var best := global_position
+	var best_distance := -INF
+	for point: Vector3 in candidates:
+		var score := global_position.distance_to(point)
+		for player: CharacterBody3D in players:
+			score = minf(score, point.distance_to(player.global_position))
+		if score > best_distance:
+			best_distance = score
+			best = point
+	if best_distance >= leave_distance:
+		return _clamp_to_containment(best)
+	return _clamp_to_containment(global_position + _away_from_players() * leave_distance)
+
+
+## Straight out, away from the nearest living player. Falls back to whichever
+## way it is already facing when there is nobody left to run from.
+func _away_from_players() -> Vector3:
+	var nearest := _closest_living_player()
+	var away := facing_direction
+	if nearest:
+		away = global_position - nearest.global_position
+	away.y = 0.0
+	if away.length_squared() <= 0.001:
+		return Vector3.FORWARD
+	return away.normalized()
+
+
 ## Gave up. One scream, loud enough to be heard through the whole house, and
 ## then it is gone - which is also the all-clear the player needs.
 func _begin_retreat() -> void:
 	retreat_timer = retreat_scream_duration
-	scream_audio.play()
+	WorldNet.play_shared(scream_audio)
 	_set_state(CrawlerState.RETREATING)
 
 
@@ -1372,7 +1561,7 @@ func _update_searching(delta: float) -> void:
 		search_point_timer = search_point_interval
 		search_point = _pick_search_point()
 		if not chitter_audio.playing and randf() < 0.4:
-			chitter_audio.play()
+			WorldNet.play_shared(chitter_audio)
 
 	if global_position.distance_to(search_point) <= arrive_distance:
 		_brake(delta)
@@ -1433,7 +1622,7 @@ func _settle_search_point(candidate: Vector3) -> Vector3:
 
 func _update_pounce_windup(delta: float) -> void:
 	if _attacks_blocked():
-		scream_audio.stop()
+		WorldNet.stop_shared(scream_audio)
 		pounce_timer = 0.0
 		_set_state(CrawlerState.RECOVERING)
 		return
@@ -1466,7 +1655,7 @@ func _update_pounce_windup(delta: float) -> void:
 	# patrols overhead.
 	if aim.y >= global_position.y - 0.5:
 		velocity += Vector3.UP * (distance * pounce_arc)
-	scream_audio.play()
+	WorldNet.play_shared(scream_audio)
 	_set_state(CrawlerState.POUNCING)
 	pounce_started.emit(aim)
 
@@ -1555,7 +1744,7 @@ func _maul_contact() -> bool:
 			continue
 		if _is_occluded(player.global_position, player):
 			continue
-		scream_audio.play()
+		WorldNet.play_shared(scream_audio)
 		_kill(player)
 		return true
 	return false
@@ -1582,7 +1771,11 @@ func _kill(player: CharacterBody3D) -> void:
 		player.kill_by_ghost(self)
 	killed_player.emit(player)
 	pounce_cooldown_timer = pounce_cooldown
-	_set_state(CrawlerState.RECOVERING)
+	# It leaves over the body rather than folding up on top of it. RECOVERING is
+	# the fair-play window a *missed* leap owes the player; after a kill there is
+	# nobody left to owe it to, and staying put wedged the creature against the
+	# corpse it had just landed on.
+	_begin_leaving()
 
 
 # --- Locomotion ---------------------------------------------------------------
@@ -1884,8 +2077,6 @@ func _relocate_after_wedging() -> void:
 
 func _is_visible_to_any_player() -> bool:
 	for player: CharacterBody3D in _living_players():
-		if 'eyes_closed' in player and player.eyes_closed:
-			continue
 		var camera := player.get_node_or_null('CameraPivot/Camera3D') as Camera3D
 		if not camera:
 			continue
@@ -1977,7 +2168,7 @@ func _primitive_material(mesh_instance: MeshInstance3D) -> Material:
 
 func _play_bone_snap() -> void:
 	bone_audio.pitch_scale = randf_range(0.82, 1.15)
-	bone_audio.play()
+	WorldNet.play_shared(bone_audio)
 
 
 func _update_presentation(delta: float) -> void:
@@ -2020,6 +2211,8 @@ func _update_presentation(delta: float) -> void:
 			target_agitation = 1.0
 		CrawlerState.RECOVERING:
 			target_agitation = 0.7
+		CrawlerState.LEAVING:
+			target_agitation = 0.8
 		CrawlerState.RETREATING:
 			target_agitation = 0.9
 	agitation = move_toward(agitation, target_agitation, delta * 3.0)

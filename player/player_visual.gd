@@ -2,20 +2,26 @@ extends Node3D
 
 ## Presentation-only body for a player. Gameplay stays on Player so this scene
 ## can be hidden from the owning first-person camera and replicated later
-## without making the imported Kenney rig part of the movement controller.
+## without making the imported boto rig part of the movement controller.
 
 const IDLE_SCENE: PackedScene = preload("res://assets/player/Animations/idle.fbx")
 const RUN_SCENE: PackedScene = preload("res://assets/player/Animations/run.fbx")
 const JUMP_SCENE: PackedScene = preload("res://assets/player/Animations/jump.fbx")
 
 ## Visual layer reserved for the owning player's own rig. Their flashlight
-## drops this layer from its cull mask so the body it is standing inside
-## cannot shadow the whole view. Nothing else uses layer 20.
+## drops this layer from its cull mask, while the local rig also disables
+## shadow casting because Godot shadow maps intentionally ignore light cull
+## masks. Nothing else uses layer 20.
 const LOCAL_BODY_VISUAL_LAYER := 20
 
+## Unused by the boto rig, which ships one baked atlas for every player: a
+## per-player texture would have to be authored against this model's own UVs.
 @export var skin: Texture2D
-@export var model_scale: float = 0.46
-## Kenney's character faces +Z, while Godot gameplay/camera forward is -Z.
+## The rig is 2.05 m tall unscaled, which pushes its head a clear 30 cm through
+## the 1.75 m capsule it rides in - and through every ceiling and doorframe that
+## capsule fits under. Scale it to stand inside its own collision shape.
+@export var model_scale: float = 0.85
+## The character faces +Z, while Godot gameplay/camera forward is -Z.
 ## Keep this correction on the presentation rig so movement and flashlight
 ## transforms remain authoritative and unchanged.
 @export var model_forward_yaw_degrees: float = 180.0
@@ -36,7 +42,8 @@ const LOCAL_BODY_VISUAL_LAYER := 20
 @export var downed_pose_speed: float = 3.5
 
 @onready var character: Node3D = $Character
-@onready var body_mesh: MeshInstance3D = $Character/Root/Skeleton3D/characterMedium
+@onready var skeleton: Skeleton3D = $"Character/simple_character/GeneralSkeleton"
+@onready var body_mesh: MeshInstance3D = $"Character/simple_character/GeneralSkeleton/body"
 @onready var name_tag: Label3D = $NameTag
 
 var _animation_player: AnimationPlayer
@@ -47,13 +54,13 @@ var _is_local_rig: bool = true
 var _rig_hidden: bool = true
 var _spectating: bool = false
 var _downed_pose: float = 0.0
+var _local_body_excluded_from_beam: bool = false
 var _preview_time: float = 0.0
 var _preview_state_tag: Label3D
 
 
 func _ready() -> void:
 	_player = get_parent() as CharacterBody3D
-	_apply_skin()
 	_build_animation_player()
 	_align_to_player_capsule()
 	_collect_rig_geometry()
@@ -132,20 +139,11 @@ func _update_lobby_preview(delta: float) -> void:
 	character.rotation.y = base_yaw + sin(_preview_time * 0.55) * deg_to_rad(1.8)
 
 
-func _apply_skin() -> void:
-	if not body_mesh or not skin:
-		return
-	var material := StandardMaterial3D.new()
-	material.albedo_texture = skin
-	material.roughness = 0.9
-	body_mesh.set_surface_override_material(0, material)
-
-
 func _build_animation_player() -> void:
 	_animation_player = AnimationPlayer.new()
 	_animation_player.name = "CharacterAnimationPlayer"
-	# The source FBX animation tracks target Root/Skeleton3D. Parenting the
-	# player beside that Root preserves those paths without rewriting 40 tracks.
+	# _retarget_tracks() rewrites every track against this rig, so the player
+	# only has to sit above the skeleton it drives.
 	character.add_child(_animation_player)
 
 	var library := AnimationLibrary.new()
@@ -167,8 +165,31 @@ func _add_animation(
 	if source_player and source_player.has_animation(source_name):
 		var animation := source_player.get_animation(source_name).duplicate(true) as Animation
 		animation.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+		_retarget_tracks(animation)
 		library.add_animation(target_name, animation)
 	source_root.free()
+
+
+## Both rigs are imported through a humanoid bone map, so the Kenney clips
+## already name this model's bones - but they address them through their own
+## source scene (`%GeneralSkeleton`) and still carry the control/IK bones the
+## boto rig has no counterpart for. Point every track at this skeleton and drop
+## the leftovers, so the mixer never has a track it cannot resolve.
+##
+## Position tracks go too, rotation only from here. The clips were authored
+## against Kenney proportions, and the jump one parks its hips 1.5 m below the
+## rest pose - on this rig that buried the whole body a metre under the floor
+## every time somebody jumped, fell, or stepped up onto anything. The capsule
+## already carries the body through the world; the animation only has to bend it.
+func _retarget_tracks(animation: Animation) -> void:
+	var skeleton_path := String(character.get_path_to(skeleton))
+	for index: int in range(animation.get_track_count() - 1, -1, -1):
+		var bone := animation.track_get_path(index).get_concatenated_subnames()
+		if animation.track_get_type(index) == Animation.TYPE_POSITION_3D \
+				or bone.is_empty() or skeleton.find_bone(bone) == -1:
+			animation.remove_track(index)
+			continue
+		animation.track_set_path(index, NodePath("%s:%s" % [skeleton_path, bone]))
 
 
 func _align_to_player_capsule() -> void:
@@ -180,8 +201,8 @@ func _align_to_player_capsule() -> void:
 	character.rotation.y = deg_to_rad(model_forward_yaw_degrees)
 
 
-## The Kenney import is a single skinned mesh today, but the render decisions
-## below are about "this player's whole body", not about one node name -
+## The rig is arms/body/head today, but the render decisions below are about
+## "this player's whole body", not about any one node name -
 ## collect every drawable once so an added prop cannot leak into the view.
 func _collect_rig_geometry() -> void:
 	_rig_geometry.clear()
@@ -203,19 +224,47 @@ func _update_local_render_mode() -> void:
 		# The owner's flashlight sits inside this body. Moving the rig onto its
 		# own visual layer and dropping that layer from the beam is what keeps
 		# a jump from smearing the player's own silhouette across the room.
+		var local_body_mask := 1 << (LOCAL_BODY_VISUAL_LAYER - 1)
 		for geometry: GeometryInstance3D in _rig_geometry:
-			geometry.layers |= 1 << (LOCAL_BODY_VISUAL_LAYER - 1)
+			# This must be an assignment, not an OR. If layer 1 remains set, the
+			# flashlight still matches the mesh through layer 1 and the head/arms
+			# directly in front of the camera cut the beam into dark polygons.
+			geometry.layers = local_body_mask
 		var flashlight := _player.get_node_or_null(
 			"CameraPivot/Camera3D/Flashlight"
 		) as SpotLight3D
 		if flashlight:
-			flashlight.light_cull_mask &= ~(1 << (LOCAL_BODY_VISUAL_LAYER - 1))
+			flashlight.light_cull_mask &= ~local_body_mask
+			_local_body_excluded_from_beam = true
 	_rig_hidden = not _should_render_rig()
 	_spectating = _player_flag("is_spectator")
 	_apply_rig_render_mode()
 
 
 func _update_render_mode() -> void:
+	# The owner's flashlight stands inside this rig's head, so a body that never
+	# got isolated shadows the entire view and makes the beam look absent.
+	# Re-check the actual render state rather than only a startup flag: ownership
+	# can settle after the child _ready(), and a live script reload must also fix
+	# an already-running player whose geometry still has the old layer/cast mode.
+	if not show_local_body \
+			and _player.has_method("is_local_player") \
+			and bool(_player.call("is_local_player")):
+		var local_body_mask := 1 << (LOCAL_BODY_VISUAL_LAYER - 1)
+		var flashlight := _player.get_node_or_null(
+			"CameraPivot/Camera3D/Flashlight"
+		) as SpotLight3D
+		var isolation_valid := (
+			is_instance_valid(flashlight)
+			and flashlight.light_cull_mask & local_body_mask == 0
+			and not character.visible
+		)
+		for geometry: GeometryInstance3D in _rig_geometry:
+			isolation_valid = isolation_valid \
+				and geometry.layers == local_body_mask \
+				and geometry.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if not isolation_valid:
+			_update_local_render_mode()
 	var should_hide := not _should_render_rig()
 	var spectating := _player_flag("is_spectator")
 	if should_hide == _rig_hidden and spectating == _spectating:
@@ -240,9 +289,15 @@ func _player_flag(property: String) -> bool:
 
 func _apply_rig_render_mode() -> void:
 	var spectating := _spectating
-	character.visible = not spectating
+	var hide_local_body := _is_local_rig and not show_local_body
+	# Cast-shadow modes only change how geometry enters the shadow pass. OFF
+	# makes the mesh render normally, which puts the owning camera inside the
+	# character's head. The first-person body itself must be hidden explicitly.
+	character.visible = not spectating and not hide_local_body
 	var cast_mode := (
-		GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if hide_local_body
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		if _rig_hidden
 		else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	)
@@ -299,7 +354,12 @@ func _update_crouch_visual(delta: float) -> void:
 ## its back around its own feet. The small lift keeps the lying body above the
 ## floor plane instead of half inside it.
 func _update_downed_pose(delta: float) -> void:
-	var target := 1.0 if _player_flag("is_downed") else 0.0
+	# A final death is neither downed nor spectating: the run-over card owns the
+	# victim's UI, but other peers still need to see a body rather than an upright
+	# idle character. Reuse the downed pose until the lobby replaces the scene.
+	var incapacitated := _player_flag("is_downed") \
+		or (not _player_flag("is_alive") and not _player_flag("is_spectator"))
+	var target := 1.0 if incapacitated else 0.0
 	if is_equal_approx(_downed_pose, target):
 		return
 	_downed_pose = move_toward(_downed_pose, target, downed_pose_speed * delta)
@@ -310,7 +370,8 @@ func _update_downed_pose(delta: float) -> void:
 func _update_locomotion_animation() -> void:
 	if not _animation_player:
 		return
-	if _player_flag("is_downed"):
+	if _player_flag("is_downed") \
+			or (not _player_flag("is_alive") and not _player_flag("is_spectator")):
 		_play_animation(&"idle")
 		return
 	var horizontal_speed := Vector2(_player.velocity.x, _player.velocity.z).length()

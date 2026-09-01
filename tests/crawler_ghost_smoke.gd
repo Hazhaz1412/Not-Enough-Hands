@@ -14,6 +14,7 @@ const CrawlerState_OMEN := 2
 const CrawlerState_PATROL := 3
 const CrawlerState_POUNCING := 7
 const CrawlerState_RETREATING := 9
+const CrawlerState_LEAVING := 10
 
 
 func _initialize() -> void:
@@ -37,6 +38,12 @@ func _run() -> void:
 		return
 	if not await _test_maul_at_contact(crawler_scene):
 		return
+	if not await _test_a_distant_noise_is_walked_down(crawler_scene):
+		return
+	if not await _test_loitering_hands_the_room_back(crawler_scene):
+		return
+	if not await _test_a_kill_does_not_leave_it_standing_on_the_body(crawler_scene):
+		return
 	if not await _test_containment_recovers_escape(crawler_scene):
 		return
 	if not await _test_hunt_cycle(crawler_scene):
@@ -46,7 +53,8 @@ func _run() -> void:
 
 	print(
 		'Crawler ghost smoke test passed: noise hunt, ceiling cling, wall climb, '
-		+ 'silence, pounce, contact kill, containment, hunt cycle, harmless while hidden.'
+		+ 'silence, pounce, contact kill, leap line, loiter timeout, kill disengage, '
+		+ 'containment, hunt cycle, harmless while hidden.'
 	)
 	quit()
 
@@ -207,7 +215,6 @@ func _test_silence_breaks_the_trail(scene: PackedScene) -> bool:
 
 func _spawn_player(at: Vector3) -> CharacterBody3D:
 	var player := (load('res://player/player.tscn') as PackedScene).instantiate() as CharacterBody3D
-	player.set('automatic_blink_enabled', false)
 	root.add_child(player)
 	player.global_position = at
 	return player
@@ -247,6 +254,118 @@ func _test_maul_at_contact(scene: PackedScene) -> bool:
 
 	if player.get('is_alive'):
 		return _fail('Crawler reached a player at contact range without killing them.', crawler)
+
+	await _despawn(crawler)
+	await _despawn(player)
+	return true
+
+
+## The leap line. Outside pounce_range there is no leap at all - it walks the
+## noise down - and the same player inside it is a valid candidate, so this
+## pins the boundary itself rather than just the far side of it. Read off the
+## export rather than hardcoded, because where the line sits is a balance dial.
+func _test_a_distant_noise_is_walked_down(scene: PackedScene) -> bool:
+	var crawler := _spawn_crawler(scene, Vector3(-5.0, 0.4, 0.0))
+	var pounce_range: float = crawler.get('pounce_range')
+	var player := _spawn_player(crawler.global_position + Vector3(0.0, 0.5, pounce_range + 2.0))
+	await physics_frame
+	await physics_frame
+
+	crawler.call('report_noise', player.global_position, 1.0, player)
+	await physics_frame
+	if crawler.call('_pounce_candidate') != null:
+		return _fail('Crawler was willing to leap at a player beyond pounce_range.', crawler)
+
+	var start := crawler.global_position
+	await create_timer(0.8).timeout
+	if crawler.global_position.distance_to(start) < 0.5:
+		return _fail('Crawler neither leapt nor closed on a noise outside pounce_range.', crawler)
+
+	# Same player, same fix, now inside the line: the leap has to be back on.
+	player.global_position = crawler.global_position + Vector3(0.0, 0.5, pounce_range - 3.0)
+	crawler.call('report_noise', player.global_position, 1.0, player)
+	await physics_frame
+	if crawler.call('_pounce_candidate') == null:
+		return _fail('Crawler refused to leap at a player well inside pounce_range.', crawler)
+
+	await _despawn(crawler)
+	await _despawn(player)
+	return true
+
+
+## It may not camp on somebody. Held next to a player with every attack
+## suspended - the state that used to leave it orbiting them for the whole hunt
+## - it has to give the room back once loiter_tolerance is up, and to actually
+## put distance between them rather than just changing state.
+func _test_loitering_hands_the_room_back(scene: PackedScene) -> bool:
+	var player := _spawn_player(Vector3(-4.0, 0.9, -4.0))
+	var crawler := _spawn_crawler(scene, Vector3(-4.0, 0.4, -2.5))
+	crawler.set('loiter_tolerance', 0.5)
+	crawler.set('leave_distance', 6.0)
+	# Suspended attacks are the honest way to hold it in the "next to a player
+	# and unable to resolve it" state this watchdog exists for; without it the
+	# maul simply kills them and the other test below is what runs.
+	crawler.call('set_dev_attack_suspended', true)
+	await physics_frame
+	await physics_frame
+
+	crawler.call('report_noise', player.global_position, 1.0, player)
+	await create_timer(1.2).timeout
+	if int(crawler.get('state')) != CrawlerState_LEAVING:
+		return _fail(
+			'Crawler sat next to a player past loiter_tolerance instead of leaving (state=%d).'
+				% int(crawler.get('state')),
+			crawler
+		)
+
+	# Measured from where it turned round rather than from the player: the
+	# retreat is a route to a destination chosen away from everyone, and a
+	# surface crawler takes that route around and over things rather than
+	# straight, so the straight line back to the player is not what moves.
+	# Polled rather than sampled once for the same reason - a single slice can
+	# land on a wall transition, which is slow and is not a failure.
+	var turned_at := crawler.global_position
+	var travelled := 0.0
+	for _sample: int in 40:
+		await create_timer(0.1).timeout
+		travelled = maxf(travelled, crawler.global_position.distance_to(turned_at))
+		if travelled >= 3.0:
+			break
+	if travelled < 3.0:
+		return _fail(
+			'Crawler entered LEAVING but only ever got %.2f m from where it turned.' % travelled,
+			crawler
+		)
+
+	await _despawn(crawler)
+	await _despawn(player)
+	return true
+
+
+## The corpse is the one body guaranteed to still be underneath it, and folding
+## up on top of one is how the creature used to wedge itself for the rest of a
+## hunt. A kill has to end with it walking away.
+func _test_a_kill_does_not_leave_it_standing_on_the_body(scene: PackedScene) -> bool:
+	var player := _spawn_player(Vector3(0.0, 0.9, 8.0))
+	var crawler := _spawn_crawler(scene, Vector3(0.0, 0.4, 6.8))
+	crawler.set('leave_distance', 6.0)
+	await physics_frame
+	await physics_frame
+
+	crawler.call('report_noise', player.global_position, 1.0, player)
+	await create_timer(1.2).timeout
+	if player.get('is_alive'):
+		return _fail('Crawler did not kill the player this check is about.', crawler)
+	if int(crawler.get('state')) != CrawlerState_LEAVING:
+		return _fail(
+			'Crawler stayed on the body after a kill (state=%d).' % int(crawler.get('state')),
+			crawler
+		)
+
+	var killed_at := crawler.global_position
+	await create_timer(1.5).timeout
+	if crawler.global_position.distance_to(killed_at) < 1.0:
+		return _fail('Crawler is leaving after a kill but never left the kill site.', crawler)
 
 	await _despawn(crawler)
 	await _despawn(player)

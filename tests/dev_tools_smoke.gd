@@ -95,15 +95,12 @@ func _run() -> void:
 		return
 	player.global_position = before_flight
 
-	# Clear vision has to switch off the overlays AND the forced blinking, or a
-	# ghost can still blind a player who asked not to be blinded.
+	# Clear vision has to switch the overlays off, or the house stays as hard to
+	# read as it was for a player who asked for it not to be.
 	var environment_before: Environment = (game.get_node("WorldEnvironment") as WorldEnvironment).environment
 	dev_tools.set_bright_vision_enabled(true)
-	player.call("force_blink", 1.0)
 	if not bool(player.get("dev_clear_vision")) \
-		or player.get_node("HorrorOverlay/VignetteAndGrain").visible \
-		or bool(player.get("automatic_blink_enabled")) \
-		or float(player.get("forced_blink_remaining")) > 0.0:
+		or player.get_node("HorrorOverlay/VignetteAndGrain").visible:
 		_fail("Clear vision left an adverse effect switched on.")
 		return
 	var bright_environment: Environment = (game.get_node("WorldEnvironment") as WorldEnvironment).environment

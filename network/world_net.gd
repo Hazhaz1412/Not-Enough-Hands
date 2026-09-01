@@ -6,7 +6,7 @@ extends RefCounted
 ## Ghosts, defense doors, the power manager, the totem ritual and the night
 ## clock all have to ask one question - "am I the one simulating this?" - and
 ## two of them also have to create things that must exist on every peer. Those
-## are the only three calls here.
+## are the only calls here, alongside the two that play a sound on every peer.
 ##
 ## ## Why this is a class and not the autoload
 ##
@@ -87,6 +87,40 @@ static func report_holder(item: Node, peer_id: int) -> void:
 	var replicator := _node(REPLICATOR_PATH)
 	if replicator != null and replicator.has_method(&"report_holder"):
 		replicator.call(&"report_holder", item, peer_id)
+
+
+## Plays a sound everybody in the house is supposed to hear.
+##
+## Ghost audio splits the same way ghost movement does. The loops a body makes
+## while it moves - footsteps, breathing, the hooks - are already re-derived on
+## a client by the ghost's own `_update_presentation()`, because they follow
+## from the position and velocity that arrive at 20 Hz. The one-shots do not:
+## a scream, a horn, a teleport is fired by the brain, and a client runs no
+## brain, so on a client those simply never happened. This is the seam that
+## sends them, and a plain `play()` when there is no network layer at all.
+static func play_shared(player: Node, offset: float = 0.0) -> void:
+	if player == null:
+		return
+	player.call(&"play", offset)
+	var replicator := _node(REPLICATOR_PATH)
+	if replicator != null and replicator.has_method(&"report_sound"):
+		replicator.call(
+			&"report_sound",
+			player,
+			offset,
+			float(player.get(&"pitch_scale")),
+			float(player.get(&"volume_db"))
+		)
+
+
+## The mirror of play_shared() for the sounds long enough to be cut short.
+static func stop_shared(player: Node) -> void:
+	if player == null:
+		return
+	player.call(&"stop")
+	var replicator := _node(REPLICATOR_PATH)
+	if replicator != null and replicator.has_method(&"report_sound_stop"):
+		replicator.call(&"report_sound_stop", player)
 
 
 static func _tree() -> SceneTree:

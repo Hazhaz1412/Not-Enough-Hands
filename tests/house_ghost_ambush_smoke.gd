@@ -16,7 +16,15 @@ func _run() -> void:
 	var map_rid := region.get_navigation_map()
 	player.set_physics_process(false)
 	player.velocity = Vector3(1.0, 0.0, 0.0)
-	player.call('force_blink', 20.0)
+	# The statue only moves unobserved. A zero observation cone is this
+	# fixture's way of saying "nobody is watching it", now that a blink is no
+	# longer a thing a player can be forced into.
+	statue.set('observation_half_angle', 0.0)
+	# This legacy compact-house fixture cannot supply the production 15 m
+	# safety radius. Keep it focused on navmesh/route validity; the default
+	# distance contract is covered by statue_hunt_cycle_smoke.gd.
+	statue.set('ambush_min_distance', 6.0)
+	statue.set('ambush_max_distance', 10.0)
 	statue.set('hidden_timer', 100.0)
 	statue.set('hunt_activation_chance', 1.0)
 

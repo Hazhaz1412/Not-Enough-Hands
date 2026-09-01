@@ -653,6 +653,24 @@ func _run() -> void:
 		return
 	minigame.cancel()
 
+	# Multiplayer authority claims the door before the owner's RPC arrives. A
+	# replicated `minigame_active = true` must not make that owner reject the
+	# already-approved local camera/flashlight presentation.
+	door.reset_door()
+	if not door.begin_targeting(true, 30.0) or not door.begin_exorcism():
+		_fail("Could not prepare the server-claimed door encounter regression case.")
+		return
+	if not player.start_door_minigame(door, true) or not minigame.is_running():
+		_fail("A server-claimed door was rejected when its encounter reached the owner.")
+		return
+	var remote_camera := player.get_node("CameraPivot/Camera3D") as Camera3D
+	var remote_forward := -remote_camera.global_basis.z
+	remote_forward.y = 0.0
+	if remote_forward.normalized().dot(minigame.outward) < 0.999:
+		_fail("The server-claimed encounter did not aim its owning client out through the door.")
+		return
+	minigame.cancel()
+
 	lit_lamp.queue_free()
 	dark_lamp.queue_free()
 	minigame.queue_free()

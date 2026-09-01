@@ -33,14 +33,35 @@ enum AttackPhase {
 @export var minimum_repair_cap_after_failure: float = 10.0
 
 @export_category("Ghost attack")
-@export var stalking_wait_min: float = 3.0
-@export var stalking_wait_max: float = 5.0
+@export var stalking_wait_min: float = 4.0
+@export var stalking_wait_max: float = 7.0
 @export var weak_phase_duration: float = 8.0
-@export var damage_tick_interval: float = 1.0
-@export var weak_damage_min: float = 3.0
-@export var weak_damage_max: float = 5.0
-@export var strong_damage_min: float = 7.0
-@export var strong_damage_max: float = 10.0
+## One apparition only takes a bounded bite out of the door, then leaves. Two
+## unanswered visits open any entrance in either map - and one is enough where an
+## entrance is thinner than this floor: the villa's attic skylight carries 40
+## points (spec `layers: 1` x 40) and so always falls to the first attack that
+## lands on it. Every other entrance - 80-120 in the villa, the stock 100 in
+## House2 - survives one visit and goes down to the second.
+@export var attack_damage_min: float = 50.0
+@export var attack_damage_max: float = 70.0
+## Scratches are deliberately spaced out so players have time to hear, locate,
+## and answer the attacked entrance. These ticks set the *rate* the door bleeds
+## at, not what a visit is worth: the bite above is unchanged, so an unanswered
+## entrance still falls to the second visit, it just takes about nineteen
+## seconds to get there rather than thirteen. Those extra six seconds are the
+## whole crossing time of the villa, and are what make hearing an entrance from
+## across the house worth anything.
+##
+## Lengthening a visit used to be unaffordable because DoorAttackDirector ran on
+## a blind 9-16 s timer and a long visit would starve it. GameDirector now owns
+## when a wave happens and counts an attacked door against its concurrency
+## budget, so a slower visit costs pacing nothing - it is the director's job to
+## decide the night is quiet, not this timer's.
+@export var damage_tick_interval: float = 1.5
+@export var weak_damage_min: float = 2.0
+@export var weak_damage_max: float = 3.5
+@export var strong_damage_min: float = 6.5
+@export var strong_damage_max: float = 9.0
 
 @export_category("Audio variation")
 @export var warning_pitch_min: float = 0.88
@@ -54,6 +75,7 @@ var attack_phase: AttackPhase = AttackPhase.IDLE
 var planned_attack: bool = false
 var phase_time_remaining: float = 0.0
 var damage_tick_remaining: float = 0.0
+var attack_damage_remaining: float = 0.0
 var minigame_active: bool = false
 var repair_unlocked_after_breach: bool = false
 
@@ -113,6 +135,7 @@ func begin_targeting(will_attack: bool = true, wait_override: float = -1.0) -> b
 		return false
 
 	planned_attack = will_attack
+	attack_damage_remaining = _random_attack_damage() if will_attack else 0.0
 	phase_time_remaining = (
 		_rng.randf_range(stalking_wait_min, stalking_wait_max)
 		if wait_override < 0.0
@@ -138,6 +161,7 @@ func drive_ghost_away() -> bool:
 	planned_attack = false
 	phase_time_remaining = 0.0
 	damage_tick_remaining = 0.0
+	attack_damage_remaining = 0.0
 	_set_attack_phase(AttackPhase.IDLE)
 	ghost_driven_away.emit(self)
 	return true
@@ -159,6 +183,9 @@ func take_damage(amount: float, strong_hit: bool = false) -> float:
 
 	if current_durability <= 0.0:
 		current_durability = 0.0
+		planned_attack = false
+		damage_tick_remaining = 0.0
+		attack_damage_remaining = 0.0
 		minigame_active = false
 		repair_unlocked_after_breach = false
 		_stop_attack_audio()
@@ -250,6 +277,7 @@ func reset_door() -> void:
 	planned_attack = false
 	phase_time_remaining = 0.0
 	damage_tick_remaining = 0.0
+	attack_damage_remaining = 0.0
 	minigame_active = false
 	repair_unlocked_after_breach = false
 	_set_breached_visual(false)
@@ -361,6 +389,7 @@ func complete_exorcism() -> bool:
 		planned_attack = false
 		phase_time_remaining = 0.0
 		damage_tick_remaining = 0.0
+		attack_damage_remaining = 0.0
 		_set_attack_phase(AttackPhase.IDLE)
 		ghost_driven_away.emit(self)
 	exorcism_completed.emit(self)
@@ -403,6 +432,16 @@ func _finish_false_alarm() -> void:
 	_stop_attack_audio()
 	planned_attack = false
 	phase_time_remaining = 0.0
+	attack_damage_remaining = 0.0
+	_set_attack_phase(AttackPhase.IDLE)
+
+
+func _finish_attack() -> void:
+	_stop_attack_audio()
+	planned_attack = false
+	phase_time_remaining = 0.0
+	damage_tick_remaining = 0.0
+	attack_damage_remaining = 0.0
 	_set_attack_phase(AttackPhase.IDLE)
 
 
@@ -413,9 +452,24 @@ func _process_damage_ticks(
 	strong_hit: bool
 ) -> void:
 	damage_tick_remaining -= delta
-	while damage_tick_remaining <= 0.0 and current_durability > 0.0:
-		take_damage(_rng.randf_range(minimum_damage, maximum_damage), strong_hit)
+	while damage_tick_remaining <= 0.0 \
+		and current_durability > 0.0 \
+		and attack_damage_remaining > 0.0:
+		var requested_damage := minf(
+			_rng.randf_range(minimum_damage, maximum_damage),
+			attack_damage_remaining
+		)
+		var applied_damage := take_damage(requested_damage, strong_hit)
+		attack_damage_remaining = maxf(attack_damage_remaining - applied_damage, 0.0)
 		damage_tick_remaining += maxf(damage_tick_interval, 0.01)
+	if attack_damage_remaining <= 0.0 and attack_phase != AttackPhase.BREACHED:
+		_finish_attack()
+
+
+func _random_attack_damage() -> float:
+	var minimum := maxf(minf(attack_damage_min, attack_damage_max), 0.0)
+	var maximum := maxf(maxf(attack_damage_min, attack_damage_max), minimum)
+	return _rng.randf_range(minimum, maximum)
 
 
 func _set_attack_phase(new_phase: AttackPhase) -> void:

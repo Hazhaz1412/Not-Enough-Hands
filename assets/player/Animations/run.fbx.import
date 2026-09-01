@@ -39,7 +39,14 @@ import_script/path=""
 materials/extract=0
 materials/extract_format=0
 materials/extract_path=""
-_subresources={}
+_subresources={
+"nodes": {
+"PATH:Root/Skeleton3D": {
+"retarget/bone_map": Resource("res://assets/player/kenney_humanoid_bone_map.tres"),
+"retarget/rest_fixer/fix_silhouette/enable": true
+}
+}
+}
 fbx/importer=0
 fbx/allow_geometry_helper_nodes=false
 fbx/embedded_image_handling=1

@@ -1,14 +1,14 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" uid="uid://chm8e4dh65qu8" path="res://ghosts/hunter_ghost.gd" id="1_hunter"]
+[ext_resource type="Script" path="res://ghosts/hunter_ghost.gd" id="1_hunter"]
 [ext_resource type="PackedScene" path="res://ghosts/ghost_visual.tscn" id="2_rig"]
-[ext_resource type="AudioStream" uid="uid://bxp6mf2rcm111" path="res://assets/audio/minigame/door_minigame_drone.mp3" id="3_boots"]
-[ext_resource type="AudioStream" uid="uid://31ptd2pg7i5t" path="res://assets/audio/417537__danthaiwang__scratching-with-fingernails.wav" id="4_hook"]
-[ext_resource type="AudioStream" uid="uid://dcii8s3l5jobd" path="res://assets/audio/crawler_breath.ogg" id="5_breath"]
-[ext_resource type="AudioStream" uid="uid://cuouphgaqs4q0" path="res://assets/audio/crawler_chitter.ogg" id="6_sniff"]
-[ext_resource type="AudioStream" uid="uid://bplyrj5sqv0rr" path="res://assets/audio/creature_reveal.mp3" id="7_horn"]
-[ext_resource type="AudioStream" uid="uid://clgy634bymx8p" path="res://assets/audio/statue_attack.ogg" id="8_seize"]
-[ext_resource type="AudioStream" uid="uid://dg3y6m088hk8v" path="res://assets/audio/crawler_bone_snap.wav" id="9_breach"]
+[ext_resource type="AudioStream" path="res://assets/audio/536770__doctorphil__footsteps-on-a-wooden-floor.wav" id="3_boots"]
+[ext_resource type="AudioStream" path="res://assets/audio/417537__danthaiwang__scratching-with-fingernails.wav" id="4_hook"]
+[ext_resource type="AudioStream" path="res://assets/audio/crawler_breath.ogg" id="5_breath"]
+[ext_resource type="AudioStream" path="res://assets/audio/crawler_chitter.ogg" id="6_sniff"]
+[ext_resource type="AudioStream" path="res://assets/audio/creature_reveal.mp3" id="7_horn"]
+[ext_resource type="AudioStream" path="res://assets/audio/statue_attack.ogg" id="8_seize"]
+[ext_resource type="AudioStream" path="res://assets/audio/crawler_bone_snap.wav" id="9_breach"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_hunter"]
 radius = 0.34

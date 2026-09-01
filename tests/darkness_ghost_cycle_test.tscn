@@ -70,7 +70,7 @@ size = Vector3(0.24, 3.5, 7.0)
 
 [node name="DarknessGhostCycleTest" type="Node3D"]
 script = ExtResource("1_controller")
-test_expansion_seconds = 15.0
+test_warning_seconds = 4.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_test")
@@ -232,7 +232,7 @@ power_consumption = 80.0
 powered_light = NodePath("..")
 
 [node name="TestPlayer" type="Node3D" parent="." groups=["players"]]
-position = Vector3(-11.5, 0.95, 2.2)
+position = Vector3(-20, 0.95, 2.2)
 
 [node name="PlayerLabel" type="Label3D" parent="TestPlayer"]
 position = Vector3(0, 1.2, 0)
@@ -246,8 +246,10 @@ billboard = 1
 [node name="DarknessGhost" parent="." instance=ExtResource("5_ghost")]
 position = Vector3(-9, 0.05, 0)
 auto_manifest = false
-zone_expansion_seconds = 15.0
-zone_expansion_walk_speed = 1.0
+minimum_spawn_distance = 15.0
+warning_duration = 4.0
+normal_speed = 6.0
+darkness_speed = 9.0
 
 [node name="Camera3D" type="Camera3D" parent="."]
 position = Vector3(0, 15, 23)
@@ -279,7 +281,7 @@ text = "Darkness Ghost — 3 Zone Test"
 
 [node name="Hint" type="Label" parent="TestUI/Panel/Margin/Content"]
 theme_override_colors/font_color = Color(0.8, 0.82, 0.9, 1)
-text = "Ma chờ 15s, đi vào zone sáng, rồi mới tắt điện. Enter: reset | Space: bắt đầu đi ngay\nCamera: WASD di chuyển, Q/E lên-xuống, Shift nhanh, chuột xoay, Tab thả/bắt chuột"
+text = "Ma spawn cách player ít nhất 15m, đèn nhấp nháy 4s rồi tắt vùng rộng và bắt đầu dí. Enter: reset | Space: bỏ qua cảnh báo\nCamera: WASD di chuyển, Q/E lên-xuống, Shift nhanh, chuột xoay, Tab thả/bắt chuột"
 autowrap_mode = 2
 
 [node name="State" type="Label" parent="TestUI/Panel/Margin/Content"]
@@ -289,4 +291,4 @@ text = "Đang khởi tạo..."
 text = "BẮT ĐẦU LẠI"
 
 [node name="ApproachNow" type="Button" parent="TestUI/Panel/Margin/Content"]
-text = "CHO MA BẮT ĐẦU ĐI (KHÔNG TẮT NGAY)"
+text = "BỎ QUA CẢNH BÁO — BẮT ĐẦU DÍ"

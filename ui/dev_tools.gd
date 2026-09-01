@@ -170,7 +170,7 @@ func _on_bladder_changed(value: float, max_value: float) -> void:
 	bladder_value.text = "%d%%" % roundi(bladder_slider.value)
 
 
-## Turns the night off. The player owns the overlays and the blinking; the
+## Turns the night off. The player owns the overlays; the
 ## darkness itself lives in the scene's Environment, so both halves are flipped
 ## together and the original Environment is kept for putting back.
 func set_bright_vision_enabled(enabled: bool) -> void:

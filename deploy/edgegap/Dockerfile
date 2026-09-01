@@ -25,5 +25,11 @@ RUN chmod +x /app/not-enough-hands-server.x86_64 \
 USER 10001:10001
 EXPOSE 7777/udp
 
-ENTRYPOINT ["/app/not-enough-hands-server.x86_64", "--headless", "--", "--server"]
+# stdbuf, not a bare exec: Godot writes through stdio, which block-buffers into
+# a pipe. Without this a container that dies takes its last 4 KB with it - the
+# GDScript errors and the crash backtrace that say *why* it died are still
+# sitting in the buffer when the process is gone, which is why an Edgegap
+# "exit code 139, reason: crashed" arrives with an empty Logs tab. Line
+# buffering costs nothing at this log volume and is what makes a crash readable.
+ENTRYPOINT ["stdbuf", "-oL", "-eL", "/app/not-enough-hands-server.x86_64", "--headless", "--", "--server"]
 CMD ["--port=7777"]

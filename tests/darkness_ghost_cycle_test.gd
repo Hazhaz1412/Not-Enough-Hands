@@ -1,7 +1,7 @@
 extends Node3D
 
-## Compact visual test: ZONE 01 -> ZONE 02 -> ZONE 03.
-@export_range(2.0, 30.0, 0.5) var test_expansion_seconds := 15.0
+## Compact visual test: target -> four-second flicker -> broad blackout/chase.
+@export_range(1.0, 10.0, 0.25) var test_warning_seconds := 4.0
 @export_category("Free Camera")
 @export_range(1.0, 50.0, 0.5) var camera_move_speed := 11.0
 @export_range(1.0, 8.0, 0.5) var camera_sprint_multiplier := 2.5
@@ -23,8 +23,13 @@ var _camera_pitch := 0.0
 func _ready() -> void:
 	camera.look_at(Vector3(0.0, 1.0, 0.0), Vector3.UP, true)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	effect.zone_neighbours = {
+		&"Z01_B1_WEST": PackedStringArray(["Z02_B1_EAST"]),
+		&"Z02_B1_EAST": PackedStringArray(["Z01_B1_WEST", "Z07_F00_EAST"]),
+		&"Z07_F00_EAST": PackedStringArray(["Z02_B1_EAST"]),
+	}
 	ghost.auto_manifest = false
-	ghost.zone_expansion_seconds = test_expansion_seconds
+	ghost.warning_duration = test_warning_seconds
 	$TestUI/Panel/Margin/Content/StartCycle.pressed.connect(start_cycle)
 	$TestUI/Panel/Margin/Content/ApproachNow.pressed.connect(begin_approach_now)
 	await get_tree().process_frame
@@ -107,34 +112,35 @@ func start_cycle() -> void:
 		var zone := node as ElectricalZone
 		if zone:
 			zone.set_powered(true)
-	ghost.zone_expansion_seconds = test_expansion_seconds
+	ghost.warning_duration = test_warning_seconds
 	ghost.manifest()
 	_refresh_state()
 
 
-## Skips only the wait. The ghost must still walk into the lit room first.
+## Skips the four-second warning and starts the blackout/chase immediately.
 func begin_approach_now() -> void:
-	if ghost.is_manifested() and not ghost._pending_expansion_zone:
-		ghost._zone_expansion_in = 0.0
-		ghost._process(0.01)
+	if ghost.is_manifested() and ghost.encounter_phase == DarknessGhost.EncounterPhase.WARNING:
+		ghost._finish_warning()
 	_refresh_state()
 
 
 func _refresh_state() -> void:
 	if not is_instance_valid(effect):
 		return
-	var dark_names: PackedStringArray = []
-	for zone: ElectricalZone in effect.darkened_zones:
-		if is_instance_valid(zone):
-			dark_names.append(zone.display_name)
-	var next_name := "chưa có"
-	if is_instance_valid(ghost._pending_expansion_zone):
-		next_name = "%s (ma đang đi tới)" % ghost._pending_expansion_zone.display_name
+	var phase_name := "HIDDEN"
+	if ghost.encounter_phase == DarknessGhost.EncounterPhase.WARNING:
+		phase_name = "WARNING - LIGHTS FLICKERING"
+	elif ghost.encounter_phase == DarknessGhost.EncounterPhase.CHASING:
+		phase_name = "CHASING PLAYER"
 	state_label.text = (
-		"Vùng đã tối: %s\n" % ", ".join(dark_names)
-		+ "Zone kế tiếp: %s\n" % next_name
-		+ "Đếm ngược trước khi đi: %.1f giây\n" % maxf(ghost._zone_expansion_in, 0.0)
-		+ "Tải điện hiện tại: %.0f W" % power_manager.get_total_load()
+		"Phase: %s\n" % phase_name
+		+ "Warning remaining: %.1f s\n" % maxf(ghost._warning_time_left, 0.0)
+		+ "Dark zones: %d\n" % effect.darkened_zones.size()
+		+ "Current load: %.0f W\n" % power_manager.get_total_load()
+		+ "Ghost speed: %.0f m/s" % (
+			ghost.normal_speed if ghost._is_position_locally_lit(ghost.global_position)
+			else ghost.darkness_speed
+		)
 	)
 	_refresh_zone_label($Zone01Label as Label3D, zone_01, "ZONE 01")
 	_refresh_zone_label($Zone02Label as Label3D, zone_02, "ZONE 02")

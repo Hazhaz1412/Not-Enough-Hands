@@ -37,7 +37,7 @@ The complete export, container, registry, App Version, and join checklist is in
 1. Open `project.godot` in Godot 4.7.
 2. Press F5, enter a player name, then host locally or join a server.
 3. Move with WASD, sprint with Shift, crouch with Ctrl, jump with Space, interact
-   with E, blink with B, and press Alt to show or recapture the mouse.
+   with E, and press Alt to show or recapture the mouse.
 
 The toilet minigame starts peeing automatically, building pressure for 0.75
 seconds before it reaches full flow. Move the mouse to aim the stream and look
@@ -83,8 +83,7 @@ counted from anywhere without walking the ring. It reads the `defense_doors`
 group, so it works on both maps.
 
 **Sáng tối đa** takes the night off: no fog or volumetric fog, no vignette,
-grain or threat distortion, no involuntary blinking (a ghost calling
-`force_blink` is ignored), ambient light raised and a soft lamp on the camera.
+grain or threat distortion, ambient light raised and a soft lamp on the camera.
 The original `Environment` is kept and put straight back when the toggle is
 cleared, so it never leaks into a real run.
 
@@ -258,11 +257,11 @@ nothing about surviving the others.
 | | Statue (`ghosts/statue_ghost.gd`) | Crawler (`ghosts/crawler_ghost.gd`) | Huntsman (`ghosts/hunter_ghost.gd`) |
 |---|---|---|---|
 | Senses | Sight — it freezes while any player can see it | Sound — it is blind, and hears movement | Tracks the floor you walked on, then sees you — in every direction at once |
-| Counterplay | Keep looking at it, do not blink, and never let it inside 2 m | Go quiet: crouch, or stop moving entirely | Keep a wall between you for five whole seconds — then it walks away from you, not toward you |
+| Counterplay | Keep looking at it, and never let it close the last few metres | Go quiet: crouch, or stop moving entirely | Keep a wall between you for five whole seconds — then it walks away from you, not toward you |
 | Space | Floors and stairs, on the navmesh | Floors, walls and ceilings; travels overhead | Every room on every floor, on foot, room by room |
 | Arrival | Teleports into a scripted ambush, then vanishes | Announces itself with a fly-past, then sweeps the house | Walks in through a door it has already broken |
 | Presence | Gone the moment you look away | Gone between hunts | Never teleports, never vanishes while inside |
-| Kill | Grabs you during a blink or a look-away; distant statues surge much farther per blink, and a blink inside `blink_kill_distance` (2 m) kills outright with no wind-up | Leaps 13 m at 21 m/s, or mauls what it touches | Roars for 2.5 s, then charges a shade faster than a sprint and grabs |
+| Kill | Grabs you the moment you look away for longer than `unseen_grace_time` | Leaps `pounce_range` at 21 m/s, or mauls what it touches — then bolts for the far side of the house | Roars for 2.5 s, then charges a shade faster than a sprint and grabs |
 
 Standing still is the correct answer to the crawler, staring is the correct
 answer to the statue, and neither does anything at all to the huntsman. That is
@@ -295,11 +294,19 @@ It is not a permanent threat. It runs an announced cycle out of its attic lair:
    biased upward so it travels the walls and ceilings. It can crawl right over a
    player who is holding still, and will.
 4. **Hunt.** A noise above `patrol_alert_loudness` breaks the sweep. This is the
-   dangerous state: from up to `pounce_range` (13 m) it launches at
-   `pounce_speed` (21 m/s), so making a noise anywhere near it is fatal. A
+   dangerous state, and `pounce_range` is the line it turns on: inside it the
+   creature launches at `pounce_speed` (21 m/s), so making a noise anywhere near
+   it is fatal, while a noise further off than that is simply walked down — it
+   closes at `hunting_speed` and does not leap until you are inside the line. A
    missed pounce leaves it face down and helpless for `pounce_recovery` seconds;
    that window is the escape.
-5. **Retreat.** Laps finished with nobody found: one scream, and it is gone.
+5. **Leave.** It will not camp on anybody. Spend longer than `loiter_tolerance`
+   (4.5 s) within `loiter_radius` of it — or die to it, the corpse being the one
+   body guaranteed to still be underneath it — and it bolts at `leave_speed` for
+   the patrol marker furthest from everyone, deaf the whole way. That is what
+   ends a hunt at a player it cannot resolve, and what stops it wedging itself
+   on the body after one it did.
+6. **Retreat.** Laps finished with nobody found: one scream, and it is gone.
    That scream is also the all-clear.
 
 Route markers and the lair are level data, not code — drop `Marker3D`s into the
@@ -310,10 +317,14 @@ With no markers present it falls back to sweeping around wherever it was placed.
 
 The other two are summoned by the night. This one is summoned by failure: a
 defense door that reaches zero durability is a hole, and `hunter_ghost.gd`
-subscribes to every door's `breached` signal. `entry_delay_min`–`entry_delay_max`
-seconds later it is standing outside that doorway, and then it walks in — on
-foot, in view, no teleport. Rebuild the door inside that window and nothing ever
-enters.
+subscribes to every door's `breached` signal. It answers on the next physics
+tick — `entry_delay_min`–`entry_delay_max` ship at 0, so the hole opening and the
+thing coming through it are one event — and then it walks in on foot, in view, no
+teleport. Raising either export restores a grace period in which rebuilding the
+door before the timer elapses keeps it out entirely; the mechanism is still
+there, the night is simply no longer tuned to it. An overhead entrance (the
+villa's attic skylight) has no threshold to cross, so it drops through the
+opening onto the floor below instead of walking across.
 
 Once inside it stops in the doorway and sweeps the house with its gaze for
 `entry_scan_duration` seconds. That is the announcement, and it is the only one.
@@ -358,30 +369,25 @@ away feels wrong without turning the effect into a long-range detector. This is
 computed on each player's local camera and therefore remains per-player in a
 multiplayer session.
 
-**It hunts by track.** Every `spoor_interval` (0.4 s) each player writes a mark
-to the floor: a position, a time, and a strength. Sprinting prints hard,
-crouch-walking barely prints, and standing perfectly still still prints — faintly,
-directly under your feet. Marks fade over `spoor_lifetime` (110 s) and become
-unreadable below `cold_trail_strength`. The huntsman reads only what is inside
-`nose_range` (7.5 m), takes the freshest mark it can find there, walks to it, and
-reads again — and it only ever accepts marks *newer* than the last one it used,
-so it walks your route forwards and can never be sent in a circle by your
-history. Its knowledge is therefore local: rooms it has not physically reached
-are genuinely safe, and the trail it is following is one you already left.
+**It hunts by direct evidence only.** There is no scent, no trail and no
+footprint memory: it does not read where players have walked, and it holds no
+history of them at all. It has exactly three things to go on — a noise it heard,
+the last position it actually saw somebody at, and its authored patrol route —
+and each of the first two is a single short-lived destination that is consumed on
+arrival, not a stored record. Its knowledge is therefore strictly local and
+strictly present-tense: rooms it has not physically reached are genuinely safe,
+and nothing you did earlier in the night can be replayed against you.
 
 Outside a direct charge, every walking/tracking pace is multiplied by
-`non_chase_speed_multiplier` (1.3), so its search movement is 30% faster than
-the authored base speeds.
+`non_chase_speed_multiplier`, which is left at 1.0 — so searching moves at
+exactly the authored `walk_speed`/`track_speed` and nothing it does before it has
+seen you is faster than a walk.
 
-**Losing it and being found again.** With no readable mark it stops, sniffs and
-turns on the spot (`cast_duration`). Then it lifts its head and takes the longest
-scent it has — the freshest mark anywhere within `cast_lead_range` (30 m, most of
-the house) — and walks to where that was. Against a player who keeps moving this
-lead is always one address out of date and costs them nothing. Against a player
-who has stopped, it is the thing that eventually opens their door. Only with
-nothing readable anywhere does it fall back to quartering the house along the
-`hunter_sweep_points` markers. A full sprint within `running_hearing_range` does
-not make it hunt sound; it just gives it somewhere new to go and read the floor.
+**Losing it and being found again.** With no lead left it stops, listens and
+turns on the spot (`cast_duration`), and then goes back to quartering the house
+along the `hunter_sweep_points` markers — which is what eventually opens the door
+of a player who has stopped moving, since the route covers the whole building.
+Hearing never locks on; a noise only ever hands it one more place to go and look.
 
 **Knowing when it is beaten.** Two separate tests, because wedging has two
 shapes. The fast one watches the ground it actually covers, not the distance to
@@ -391,10 +397,9 @@ toward the stairs, so distance-closed is a lie on a staircase. The slow one
 all over several seconds, which is what catches a body sliding back and forth
 along a rail at full speed and getting nowhere. Fail either and it gives up on
 that destination: it peels off at an angle
-(`unstick_duration`), burns the mark, and writes off that patch of floor for
-`give_up_memory` seconds so a motionless player printing fresh marks in an
-unreachable spot cannot pin it there. Three failures in a row and, only while
-nobody can see it, it relocates to the nearest room on its route. Without all of
+(`unstick_duration`) and drops the lead entirely rather than re-fixating on
+somewhere it has just proved it cannot reach. Three failures in a row and, only
+while nobody can see it, it relocates to the nearest room on its route. Without all of
 this it was possible to leave it standing on a staircase for the rest of the
 night, which is the one failure state a creature built on relentlessness cannot
 have.
@@ -408,35 +413,31 @@ cone that sweeps the corridor is now cosmetic (`gaze_sweep_speed`,
 the player.
 
 **It also has ears.** Not the crawler's — that creature *is* its hearing, and
-reaches 16 m — but good enough that being near it while upright brings it over.
+reaches 20 m — but good enough that being near it while upright brings it over.
 Range scales with how loud you are on the same curve, over a smaller radius
 (`hearing_range`, 13 m at a full sprint, about a room's width at a walk).
 Crouch-walking falls under `hearing_loudness_floor` at any distance and standing
 still makes no sound at all, so crouching is the one movement it cannot hear.
-Hearing never locks on; it only ever hands it somewhere new to go and read the
-floor.
+Hearing never locks on; it only ever hands it somewhere new to go and look.
 
 **Being seen: the roar, and then the run.** The instant it has somebody it
-plants, turns to face them and roars for `roar_duration` (2.5 s) at a volume the
+plants, turns to face them and roars for `roar_duration` (3.0 s) at a volume the
 whole house hears — including the players it has *not* seen. Those seconds are
-the entire warning, and the entire head start: about eighteen metres at a
-sprint. Then it charges at `charge_speed` (8 m/s against a 7.5 m/s sprint), so
-it closes half a metre a second — a corridor is a slow loss rather than an
-instant one, and eighteen metres is enough room to actually reach the corner you
-were running for. It also has `acceleration` of a loaded truck and cannot move
+the entire warning, and the entire head start. Then it charges at `charge_speed`
+(7.2 m/s). How much of a margin that is over a sprint is a property of the map
+rather than of this creature: each map tunes the player's own `walk_speed` and
+`sprint_speed_multiplier`, and the villa deliberately runs both far lower than
+House2. Either way a corridor is a slow loss rather than an instant one. It also has `acceleration` of a loaded truck and cannot move
 at full speed in a direction it is not already facing (`off_axis_speed_floor`),
 so corners, doorways and stairs are where the chase is actually won. What you
 cannot do is duck behind one sofa: losing line of sight does not shake it, it
-keeps coming to where you were, and only a full `lose_sight_time` (5 s) unseen
-drops the chase. And when it does give up it does not do the correct thing: the
-trail you just laid getting away is the hottest thing in the building, and
-reading it would walk it straight back onto you, which is unbeatable and
-therefore not a game. Instead it turns around and walks `disengage_distance`
-(11 m) in the *opposite* direction from where it last saw you, reading nothing
-at all on the way, and its trail clock resets to the moment it gave up so those
-fresh marks are already too old to use. It can only pick you up again from
-wherever you go next. Once it has seen you it does keep your scent for the rest
-of the night (`marked_nose_bonus`).
+keeps coming to where you were, and only a full `lose_sight_time` (5.5 s) unseen
+drops the chase. And when it does give up it deliberately does the
+*stupid* thing, because the correct one would be unbeatable: instead of going
+back to where it last saw you, it turns around and walks `disengage_distance`
+(11 m) in the *opposite* direction, ignoring everything on the way. That walk is
+what converts "I broke line of sight" into actually getting away. It can only
+pick you up again from wherever you go next — it retains nothing about you.
 
 Everything short of that charge moves at `walk_speed` (2 m/s) — slower than a
 walking player, so an unaware huntsman can be walked away from in any direction.
@@ -463,7 +464,7 @@ completely untouchable.
 against a rail with you on the other side — it drops navigation for
 `direct_press_duration` and pushes straight at you instead, because pathfinding
 is exactly what dithers along a railing. Only losing sight of you for
-`lose_sight_time` (5 s) ends a lock.
+`lose_sight_time` (5.5 s) ends a lock.
 
 **Sealed in.** It has no exit behaviour at all: no hunt timer, no giving up, no
 walking back out through the hole it came in by. Once it is inside it is inside
@@ -739,10 +740,10 @@ house audio. `dev_tools_smoke.gd` covers the F1 development controls, while
 midnight rollover, and the 6:00 AM victory boundary.
 
 `hunter_ghost_smoke.gd` covers the huntsman's contract: it only gets in through a
-breach, a door rebuilt before it arrives keeps it out entirely, it follows a
-trail laid on the floor with no sight or sound to go on, a mark it can smell but
-cannot reach does not freeze it, it hears an upright player and not a crouched
-one, seeing a player produces a full roar before a single step, that roar leads
+breach, it manifests on the tick the door breaks, a door rebuilt inside a
+configured entry delay keeps it out entirely, it patrols its route with no
+footprint memory of any kind, a noise it cannot reach does not freeze it, it
+hears an upright player and not a crouched one, seeing a player produces a full roar before a single step, that roar leads
 to a kill, losing a player sends it walking away from them rather than back onto
 them, attack safety still blocks that kill, sealing the last breach traps it
 inside, and a wide-open breach and twelve quiet seconds still leave it in the

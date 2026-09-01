@@ -1,13 +1,26 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/ghosts/woman_ghost/woman_ghost.tscn" id="1_woman"]
 [ext_resource type="Script" path="res://ghosts/darkness_ghost.gd" id="2_darkness"]
 [ext_resource type="Script" path="res://power/darkness_entity_power_effect.gd" id="3_power"]
+[ext_resource type="AudioStream" path="res://assets/audio/536770__doctorphil__footsteps-on-a-wooden-floor.wav" id="4_footsteps"]
 
 [node name="DarknessGhost" instance=ExtResource("1_woman")]
 script = ExtResource("2_darkness")
-chase_speed = 2.2
+chase_speed = 5.25
 stopping_distance = 0.75
+floor_snap_length = 0.4
+floor_constant_speed = true
+floor_block_on_wall = false
+floor_max_angle = 0.959931
 
 [node name="DarknessEntityPowerEffect" type="Node" parent="."]
 script = ExtResource("3_power")
+
+[node name="FootstepAudio" type="AudioStreamPlayer3D" parent="."]
+stream = ExtResource("4_footsteps")
+volume_db = -2.0
+pitch_scale = 0.82
+unit_size = 8.0
+max_distance = 32.0
+panning_strength = 1.25

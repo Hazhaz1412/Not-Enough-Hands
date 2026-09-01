@@ -61,28 +61,31 @@ func _run() -> void:
 	if not door.begin_targeting(true, 0.1):
 		_fail("Door could not begin a second attack for the strong-phase test.")
 		return
+	door.attack_damage_min = 30.0
+	door.attack_damage_max = 30.0
+	door.damage_tick_interval = 2.0
+	# Restart so this apparition rolls the deterministic 30 HP budget above.
+	door.drive_ghost_away()
+	if not door.begin_targeting(true, 0.1):
+		_fail("Door could not begin the bounded-damage attack test.")
+		return
 	door._physics_process(0.1)
-
-	for _second: int in 8:
-		door._physics_process(1.0)
-	if door.attack_phase != DefenseDoor.AttackPhase.STRONG_ATTACK:
-		_fail("Door did not switch to strong attacks after eight seconds.")
-		return
-	var durability_after_weak := door.current_durability
-	if durability_after_weak < 60.0 or durability_after_weak > 76.0:
-		_fail("Weak attacks did not deal 3-5 HP once per second.")
-		return
-
 	door._physics_process(1.0)
-	var strong_damage := durability_after_weak - door.current_durability
-	if strong_damage < 7.0 or strong_damage > 10.0:
-		_fail("Strong attack did not deal 7-10 HP per second.")
+	if not is_equal_approx(door.current_durability, 100.0):
+		_fail("The door ghost scratched sooner than the two-second interval.")
 		return
-	if not door.begin_exorcism() or not door.complete_exorcism():
-		_fail("The strong door attack could not be repelled through the minigame API.")
-		return
+	var attack_seconds := 1
+	while door.attack_phase != DefenseDoor.AttackPhase.IDLE and attack_seconds < 30:
+		door._physics_process(1.0)
+		attack_seconds += 1
 	if door.attack_phase != DefenseDoor.AttackPhase.IDLE:
-		_fail("Winning during a strong door attack did not drive the ghost away.")
+		_fail("The bounded door attack did not end on its own.")
+		return
+	if not is_equal_approx(door.current_durability, 70.0):
+		_fail("One apparition must deal exactly its rolled 30 HP budget, not destroy the door.")
+		return
+	if attack_seconds < 8:
+		_fail("The longer scratch spacing let a 30 HP attack finish too quickly.")
 		return
 
 	door.reset_door()

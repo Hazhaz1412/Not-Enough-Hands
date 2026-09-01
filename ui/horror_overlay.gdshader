@@ -2,7 +2,7 @@ shader_type canvas_item;
 
 // The game's single post-process pass. It sits on the player's HorrorOverlay
 // CanvasLayer at layer 90, under every HUD layer, so it grades the 3D world and
-// leaves the interaction prompt, status bars, blink and the door encounter's
+// leaves the interaction prompt, status bars and the door encounter's
 // own overlay clean and readable on top of it.
 //
 // The look is early-2000s survival horror: a cheap digital camera with a dirty

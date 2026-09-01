@@ -35,9 +35,7 @@ func _ready() -> void:
 
 
 ## zone_neighbours is authored by hand and is not checked by the editor, so a
-## typo or a renamed zone_id silently breaks expansion (get_next_neighbouring_zone
-## just returns null forever, retried every zone_expansion_seconds with no
-## visible symptom besides "the ghost never spreads past its first zone").
+## typo or renamed zone_id silently shrinks the neighbouring blackout cluster.
 ## This flags that mismatch loudly in debug builds instead.
 func _validate_zone_neighbours() -> void:
 	var known_ids: Dictionary = {}
@@ -88,12 +86,15 @@ func cause_first_available_zone_outage() -> ElectricalZone:
 	return cause_zone_outage(candidates[0])
 
 
-func cause_zone_outage(zone: ElectricalZone) -> ElectricalZone:
+## `lock_chance` is forwarded per zone: the fraction of fixtures whose switch
+## stays dead until the hunt is over. Zero keeps the old behaviour, where every
+## cut light can be walked back on one switch at a time.
+func cause_zone_outage(zone: ElectricalZone, lock_chance: float = 0.0) -> ElectricalZone:
 	_prune_restored_zones()
 	if not zone or not zone.is_powered:
 		return null
 	active_zone = zone
-	if not zone.begin_switch_restore_outage():
+	if not zone.begin_switch_restore_outage(lock_chance):
 		active_zone = null
 		return null
 	if zone not in darkened_zones:
@@ -101,22 +102,71 @@ func cause_zone_outage(zone: ElectricalZone) -> ElectricalZone:
 	return zone
 
 
+func cause_zone_outages(
+	zones: Array[ElectricalZone],
+	lock_chance: float = 0.0
+) -> Array[ElectricalZone]:
+	var result: Array[ElectricalZone] = []
+	for zone: ElectricalZone in zones:
+		var darkened := cause_zone_outage(zone, lock_chance)
+		if darkened:
+			result.append(darkened)
+	return result
+
+
+## Breadth-first collection of the target zone and its authored neighbours.
+## Only powered zones are included so an existing failure does not shrink the
+## useful outage or accidentally become owned by this encounter.
+func get_zone_cluster(center: ElectricalZone, neighbour_depth: int = 1) -> Array[ElectricalZone]:
+	var result: Array[ElectricalZone] = []
+	if not center:
+		return result
+	var queue: Array = [[center, 0]]
+	var visited: Dictionary = {}
+	while not queue.is_empty():
+		var entry: Array = queue.pop_front()
+		var zone := entry[0] as ElectricalZone
+		var depth := int(entry[1])
+		if not zone or visited.has(zone.zone_id):
+			continue
+		visited[zone.zone_id] = true
+		if zone.is_powered:
+			result.append(zone)
+		if depth >= neighbour_depth:
+			continue
+		for neighbour_id: StringName in zone_neighbours.get(zone.zone_id, PackedStringArray()):
+			var neighbour := _zone_by_id(neighbour_id)
+			if neighbour and not visited.has(neighbour.zone_id):
+				queue.append([neighbour, depth + 1])
+	return result
+
+
+func find_zone(zone_id: StringName) -> ElectricalZone:
+	return _zone_by_id(zone_id)
+
+
 ## Returns the first powered frontier zone in authored neighbour order, but
 ## does not alter it. The ghost uses this to walk into a lit zone before it
 ## cuts its electricity.
 func get_next_neighbouring_zone() -> ElectricalZone:
+	var candidates := get_frontier_zones()
+	return candidates[0] if not candidates.is_empty() else null
+
+
+## Every powered zone adjacent to the darkness, in authored neighbour order.
+## The order is the component's opinion; a caller that knows where the players
+## are (DarknessGhost does) is free to pick a different one from this list.
+func get_frontier_zones() -> Array[ElectricalZone]:
 	_prune_restored_zones()
-	if darkened_zones.is_empty():
-		return null
 	var candidates: Array[ElectricalZone] = []
+	if darkened_zones.is_empty():
+		return candidates
 	for source: ElectricalZone in darkened_zones:
 		for neighbour_id: StringName in zone_neighbours.get(source.zone_id, PackedStringArray()):
 			var neighbour := _zone_by_id(neighbour_id)
 			if neighbour and neighbour.is_powered and neighbour not in candidates:
 				candidates.append(neighbour)
-	if candidates.is_empty():
-		return null
-	return candidates[0]
+	return candidates
 
 
 ## Immediate version kept as a reusable component API. DarknessGhost itself
@@ -130,9 +180,17 @@ func has_active_zone_outage() -> bool:
 	return not darkened_zones.is_empty()
 
 
-func clear_zone_outage() -> void:
-	# The zone intentionally remains off after the entity retreats. A player
-	# must reach a LightSwitch in that zone to restore it.
+## The hunt is what holds the pocket dark, so it comes back with the hunt. That
+## is not a convenience: the next haunting selects the zone the marked player is
+## standing in and can only cut a *powered* one, so a wing left off by hand would
+## quietly retire itself from the rest of the night. Fixtures a player had
+## deliberately switched off before the outage stay off - ElectricalDevice
+## restores the state it recorded, not "on".
+func clear_zone_outage(restore_power: bool = true) -> void:
+	if restore_power:
+		for zone: ElectricalZone in darkened_zones:
+			if is_instance_valid(zone):
+				zone.set_powered(true)
 	active_zone = null
 	darkened_zones.clear()
 

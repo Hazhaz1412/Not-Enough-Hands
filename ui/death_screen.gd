@@ -41,8 +41,9 @@ var restarting: bool = false
 
 
 func _ready() -> void:
-	# The world is paused on death so the attacking ghost cannot continue moving,
-	# but this CanvasLayer still needs to animate and receive the restart click.
+	# Solo play pauses the world on death so the attacking ghost stops moving;
+	# this CanvasLayer must still animate and receive the restart click there.
+	# Multiplayer keeps running until the authoritative room returns to its lobby.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	restart_button.pressed.connect(_on_restart_pressed)
@@ -103,7 +104,11 @@ func show_jumpscare(ghost: Node3D) -> void:
 	# scene. Isolated component tests and editor previews may instance Player
 	# directly under SceneTree.root without a current scene.
 	var active_scene := get_tree().current_scene
-	if active_scene and active_scene.is_ancestor_of(self):
+	# Pausing a listen-server pauses the authoritative physics too. If another
+	# player is downed, their bleed-out can then never finish and the room never
+	# reaches its lobby. Network clients do not simulate the world, so the full-
+	# screen overlay is enough presentation without pausing either side.
+	if active_scene and active_scene.is_ancestor_of(self) and not _in_network_session():
 		get_tree().paused = true
 
 

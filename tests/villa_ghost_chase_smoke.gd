@@ -37,13 +37,10 @@ func _run() -> void:
 
 	var player := main_scene.get_node("Player") as CharacterBody3D
 	var statue := main_scene.get_node("StatueGhost") as CharacterBody3D
-	# A statue that can see a player freezes, and one whose target blinks
-	# lunges. Neither belongs in a test about whether it can get there at all.
-	player.set("automatic_blink_enabled", false)
+	# A statue that can see a player freezes, which does not belong in a test
+	# about whether it can get there at all.
 	statue.set("intermittent_hunts_enabled", false)
 	statue.set("unseen_grace_time", 0.0)
-	statue.set("blink_lunge_near_speed_multiplier", 1.0)
-	statue.set("blink_lunge_far_speed_multiplier", 1.0)
 	await physics_frame
 
 	if not await _stairs(player, statue):

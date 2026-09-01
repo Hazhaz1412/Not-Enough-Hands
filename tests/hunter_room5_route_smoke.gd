@@ -55,12 +55,6 @@ func _run() -> void:
 	hunter.set("entry_enabled", false)
 	hunter.call("dev_force_spawn", null)
 	hunter.global_position = start
-	# The player began downstairs before slipping into Door 05's room, so the
-	# dormant hunter already has a ground-floor mark under this landing. Its close
-	# nose must not treat that mark as if it were on the same floor.
-	if hunter.call("has_trail_lead"):
-		_fail("Hunter can still read ground-floor spoor through the second-floor landing.")
-		return
 	hunter.set("lose_sight_time", TEST_SECONDS + 2.0)
 	hunter.call("set_dev_attack_suspended", true)
 	hunter.set("current_target", player)

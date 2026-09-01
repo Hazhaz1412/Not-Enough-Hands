@@ -3,7 +3,6 @@
 [ext_resource type="Script" path="res://player/player.gd" id="1_script"]
 [ext_resource type="Shader" path="res://ui/horror_overlay.gdshader" id="2_horror_overlay"]
 [ext_resource type="Script" path="res://ui/interaction_prompt.gd" id="3_interaction_prompt"]
-[ext_resource type="Shader" path="res://ui/blink_overlay.gdshader" id="4_blink_overlay"]
 [ext_resource type="AudioStream" path="res://assets/audio/536770__doctorphil__footsteps-on-a-wooden-floor.wav" id="5_footsteps_wood"]
 [ext_resource type="PackedScene" path="res://minigames/door_ghost_minigame.tscn" id="6_door_minigame"]
 [ext_resource type="Script" path="res://ui/death_screen.gd" id="7_death_screen"]
@@ -19,27 +18,11 @@
 [ext_resource type="Script" path="res://jumpscare/jumpscare_controller.gd" id="18_jumpscare"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+resource_local_to_scene = true
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_horror_overlay"]
 resource_local_to_scene = true
 shader = ExtResource("2_horror_overlay")
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_blink_overlay"]
-shader = ExtResource("4_blink_overlay")
-
-[sub_resource type="StyleBoxFlat" id="StyleBox_blink_bg"]
-bg_color = Color(0.015, 0.02, 0.025, 0.82)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-
-[sub_resource type="StyleBoxFlat" id="StyleBox_blink_fill"]
-bg_color = Color(0.56, 0.64, 0.68, 0.9)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_stamina_panel"]
 content_margin_left = 14.0
@@ -202,18 +185,17 @@ script = ExtResource("13_player_bladder")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
 
 [node name="Camera3D" type="Camera3D" parent="CameraPivot" unique_id=663310931]
-current = true
 fov = 70.0
 near = 0.02
 far = 45.0
 
-[node name="Flashlight" type="SpotLight3D" parent="CameraPivot/Camera3D"]
+[node name="Flashlight" type="SpotLight3D" parent="CameraPivot/Camera3D" groups=["local_light_sources"]]
 light_color = Color(0.82, 0.86, 0.9, 1)
-light_energy = 2.1
+light_energy = 2.4
 light_volumetric_fog_energy = 0.6
 shadow_enabled = true
-spot_range = 13.0
-spot_angle = 28.0
+spot_range = 15.0
+spot_angle = 31.0
 spot_angle_attenuation = 2.0
 spot_attenuation = 1.2
 
@@ -436,56 +418,6 @@ theme_override_constants/outline_size = 3
 theme_override_font_sizes/font_size = 22
 text = ""
 horizontal_alignment = 1
-
-[node name="BlinkUI" type="CanvasLayer" parent="."]
-layer = 105
-
-[node name="BlinkContainer" type="CenterContainer" parent="BlinkUI"]
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -110.0
-offset_top = -66.0
-offset_right = 110.0
-offset_bottom = -18.0
-grow_horizontal = 2
-grow_vertical = 0
-mouse_filter = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="BlinkUI/BlinkContainer"]
-layout_mode = 2
-theme_override_constants/separation = 3
-
-[node name="BlinkHint" type="Label" parent="BlinkUI/BlinkContainer/VBoxContainer"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.72, 0.77, 0.8, 0.82)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 4
-text = "GIỮ B ĐỂ NHẮM MẮT"
-horizontal_alignment = 1
-
-[node name="BlinkBar" type="ProgressBar" parent="BlinkUI/BlinkContainer/VBoxContainer"]
-custom_minimum_size = Vector2(220, 8)
-layout_mode = 2
-theme_override_styles/background = SubResource("StyleBox_blink_bg")
-theme_override_styles/fill = SubResource("StyleBox_blink_fill")
-value = 100.0
-show_percentage = false
-
-[node name="BlinkOverlay" type="CanvasLayer" parent="."]
-layer = 120
-
-[node name="Eyelids" type="ColorRect" parent="BlinkOverlay"]
-material = SubResource("ShaderMaterial_blink_overlay")
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(1, 1, 1, 1)
 
 [node name="DownedUI" type="CanvasLayer" parent="."]
 layer = 110

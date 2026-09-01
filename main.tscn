@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://q7p5bw5b7fxt" path="res://main.gd" id="3_main"]
 [ext_resource type="PackedScene" path="res://ghosts/statue_ghost.tscn" id="5_statue"]
 [ext_resource type="Script" uid="uid://d3dtpcwe6oum" path="res://door/door_attack_director.gd" id="6_door_director"]
+[ext_resource type="Script" path="res://director/game_director.gd" id="6_game_director"]
 [ext_resource type="Script" uid="uid://c5asiy3bo4o3p" path="res://audio/house_ambience.gd" id="7_house_ambience"]
 [ext_resource type="PackedScene" path="res://ghosts/crawler_ghost.tscn" id="8_crawler"]
 [ext_resource type="PackedScene" path="res://ui/night_clock.tscn" id="9_night_clock"]
@@ -57,7 +58,10 @@ script = ExtResource("3_main")
 
 [node name="DoorAttackDirector" type="Node" parent="." unique_id=759908914]
 script = ExtResource("6_door_director")
-automatic_waves = true
+automatic_waves = false
+
+[node name="GameDirector" type="Node" parent="." unique_id=1900014321]
+script = ExtResource("6_game_director")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=480636631]
 environment = SubResource("Environment_main")
@@ -106,10 +110,9 @@ entrance_id = 7
 
 [node name="Player" parent="." unique_id=308502712 instance=ExtResource("2_0xm2m")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -1.7617009)
-walk_speed = 2.5
-crouch_speed = 1.45
+walk_speed = 3.4
+crouch_speed = 1.8
 sprint_speed_multiplier = 1.3
-forced_blink_duration = 0.25
 
 [node name="HouseAmbience" type="Node" parent="." unique_id=252337975]
 script = ExtResource("7_house_ambience")

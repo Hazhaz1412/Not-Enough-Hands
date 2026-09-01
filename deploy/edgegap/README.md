@@ -41,10 +41,16 @@ will still crash the real deployment. `HOME` is `/app`, and Godot aborts with
 `SIGSEGV` (exit 139) if it cannot create its user data dir there — this is why
 the Dockerfile chowns `/app` itself and not just the files copied into it.
 
-Godot block-buffers stdout when it has no TTY, so `docker logs` stays empty even
-on a healthy server and the `NETWORK_SERVER_READY port=7777` line never shows up
-there. Confirm the server is really up by checking the socket instead — ENet
-binds dual-stack, so the entry is in `udp6`, not `udp` (`7777` is hex `1E61`):
+Godot block-buffers stdout when it has no TTY, which used to leave `docker logs`
+empty even on a healthy server — and, worse, threw away the last few kilobytes of
+a server that *crashed*, so an Edgegap "exit code 139" arrived with nothing to
+read. The ENTRYPOINT now goes through `stdbuf -oL -eL`, so `NETWORK_SERVER_READY
+port=7777`, every GDScript error and any crash backtrace reach the Logs tab as
+they happen. **When a deployment crashes, read the Logs tab first** — that output
+is the only account of why.
+
+You can still confirm the socket directly — ENet binds dual-stack, so the entry
+is in `udp6`, not `udp` (`7777` is hex `1E61`):
 
 ```powershell
 docker exec <container> sh -c "grep -i :1E61 /proc/net/udp6"

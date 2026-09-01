@@ -11,28 +11,14 @@ signal spotted_jumpscare_started()
 
 @export_category('Behavior')
 @export var active: bool = true
-@export var base_speed: float = 5.25
-@export var maximum_speed: float = 7.45
-@export var speed_per_breached_door: float = 0.32
+@export var base_speed: float = 6.55
+@export var maximum_speed: float = 9.3
+@export var speed_per_breached_door: float = 0.4
 @export_range(0, 7) var breached_door_count: int = 0
 @export_range(0.0, 1.0) var night_aggression: float = 0.2
 @export var acceleration: float = 22.0
 @export var turn_speed: float = 9.0
 @export var unseen_grace_time: float = 0.32
-## Shorter grace period used when the statue lost sight of its target
-## because that player's eyes involuntarily closed (blink), not because
-## they looked away. Without this, unseen_grace_time (0.32s) outlasts the
-## default forced_blink_duration (0.22s) and every automatic blink is a
-## free no-op. Looking away still uses the full unseen_grace_time.
-@export var blink_unseen_grace_time: float = 0.025
-## A blink is the statue's signature attack window. The farther away it is,
-## the harder it surges along its navigation path, so spotting it at the end of
-## a long hall does not make a normal 0.22-second blink feel harmless.
-@export var blink_lunge_near_distance: float = 2.5
-@export var blink_lunge_far_distance: float = 11.0
-@export var blink_lunge_near_speed_multiplier: float = 1.45
-@export var blink_lunge_far_speed_multiplier: float = 5.2
-@export var blink_lunge_acceleration_multiplier: float = 12.0
 
 @export_category('Hunt Cycle')
 ## The statue spends most of its time absent, then sometimes starts an ambush
@@ -52,8 +38,12 @@ signal spotted_jumpscare_started()
 ## within this radius. This naturally selects a lone moving player.
 @export var moving_target_speed: float = 0.2
 @export var isolation_radius: float = 7.0
-@export var ambush_min_distance: float = 6.0
-@export var ambush_max_distance: float = 10.0
+## Never manifest close enough to give a player an unavoidable point-blank
+## encounter. Distances are measured horizontally on the target's navigation
+## floor, and the same radius is kept clear of *every* living player - see
+## _is_position_clear_of_players().
+@export var ambush_min_distance: float = 15.0
+@export var ambush_max_distance: float = 22.0
 @export_range(4, 32, 1) var ambush_candidate_count: int = 16
 
 @export_category('Observation')
@@ -64,11 +54,6 @@ signal spotted_jumpscare_started()
 
 @export_category('Attack')
 @export var attack_range: float = 1.15
-## Once it is this close, a blink is not an opening the statue exploits, it is
-## the kill: no wind-up to notice, no reprieve for opening your eyes again. The
-## only counter is never letting it get this close. 0 turns it off and leaves
-## the normal wind-up as the only way it kills.
-@export var blink_kill_distance: float = 2.0
 @export var attack_windup: float = 0.48
 ## Pause after a swing before it may wind up again. Long enough that a survived
 ## attack is a real chance to break away rather than a one-second reprieve.
@@ -119,9 +104,17 @@ var unseen_time: float = 0.0
 var attack_timer: float = 0.0
 var cooldown_timer: float = 0.0
 var dev_attack_suspended: bool = false
+## The game director's own hold, kept apart from the flag above because that one
+## is not a dev flag at all: player.gd refcounts it as the minigame safety lock.
+## A director sharing it would release somebody's lock mid-encounter.
+var director_attacks_suspended: bool = false
 var attack_resume_grace_remaining: float = 0.0
 var target_refresh_timer: float = 0.0
 var hidden_timer: float = 0.0
+## Set by request_hunt_soon(). The next hidden roll skips its dice and commits,
+## so an ambush the director has already spent an event slot on cannot quietly
+## evaporate into another no_hunt_retry_delay. Cleared the moment it is used.
+var forced_hunt_pending: bool = false
 var spotted_disappear_timer: float = -1.0
 var movement_phase: float = 0.0
 var stuck_timer: float = 0.0
@@ -299,14 +292,51 @@ func _physics_process(delta: float) -> void:
 
 
 func set_dev_attack_suspended(suspended: bool) -> void:
-	if dev_attack_suspended == suspended:
+	_set_attack_suspension(suspended, director_attacks_suspended)
+
+
+## The director's hold on this ghost's attacks. Held separately from the lock
+## above so the two cannot overwrite each other: either one alone blocks, and
+## attacks only resume once both have let go.
+func set_director_attacks_suspended(suspended: bool) -> void:
+	_set_attack_suspension(dev_attack_suspended, suspended)
+
+
+## True while this ghost is a live threat the director has to count against its
+## concurrency budget. FROZEN counts: it is standing in the room, and the only
+## thing holding it there is somebody spending their eyes on it.
+func is_engaged() -> bool:
+	return state in [
+		StatueState.FROZEN,
+		StatueState.STALKING,
+		StatueState.ATTACK_WINDUP,
+	]
+
+
+## Director hook: brings the next ambush forward without starting one. It only
+## shortens a wait that is already running, so a hunt already underway is left
+## alone - the director changes the schedule, never a live encounter. The roll
+## is forced as well, or the director would spend an event slot on a coin flip.
+func request_hunt_soon(within_seconds: float) -> bool:
+	if not active or not intermittent_hunts_enabled or state != StatueState.HIDDEN:
+		return false
+	hidden_timer = minf(hidden_timer, maxf(within_seconds, 0.0))
+	forced_hunt_pending = true
+	return true
+
+
+func _set_attack_suspension(dev_held: bool, director_held: bool) -> void:
+	var was_blocked := dev_attack_suspended or director_attacks_suspended
+	dev_attack_suspended = dev_held
+	director_attacks_suspended = director_held
+	var is_blocked := dev_held or director_held
+	if is_blocked == was_blocked:
 		return
-	dev_attack_suspended = suspended
-	if suspended:
+	if is_blocked:
 		attack_resume_grace_remaining = 0.0
 		if state == StatueState.ATTACK_WINDUP:
 			attack_cancelled.emit()
-			attack_audio.stop()
+			WorldNet.stop_shared(attack_audio)
 			attack_timer = 0.0
 			state = StatueState.COOLDOWN
 			cooldown_timer = maxf(cooldown_timer, attack_cooldown)
@@ -316,7 +346,9 @@ func set_dev_attack_suspended(suspended: bool) -> void:
 
 
 func _attacks_blocked() -> bool:
-	return dev_attack_suspended or attack_resume_grace_remaining > 0.0
+	return dev_attack_suspended \
+		or director_attacks_suspended \
+		or attack_resume_grace_remaining > 0.0
 
 
 ## Forces the existing statue instance to manifest for development testing,
@@ -357,10 +389,14 @@ func _update_hidden_hunt(delta: float) -> void:
 		return
 
 	# A failed roll creates a real quiet interval instead of checking every
-	# frame until success, which would make the probability meaningless.
-	if hunt_activation_chance <= 0.0 or (
+	# frame until success, which would make the probability meaningless. A hunt
+	# the director asked for skips the dice entirely - it already decided this
+	# is the moment, and paid an event slot for it.
+	var forced := forced_hunt_pending
+	forced_hunt_pending = false
+	if not forced and (hunt_activation_chance <= 0.0 or (
 		hunt_activation_chance < 1.0 and randf() > hunt_activation_chance
-	):
+	)):
 		hidden_timer = no_hunt_retry_delay
 		return
 
@@ -385,7 +421,7 @@ func _begin_hunt(target: CharacterBody3D, ambush_position: Vector3) -> void:
 	unseen_time = unseen_grace_time
 	spotted_disappear_timer = -1.0
 	spotted_jumpscare_played = false
-	spotted_jumpscare_audio.stop()
+	WorldNet.stop_shared(spotted_jumpscare_audio)
 	is_observed = false
 	state = StatueState.STALKING
 	_set_manifested(true)
@@ -395,7 +431,7 @@ func _begin_hunt(target: CharacterBody3D, ambush_position: Vector3) -> void:
 	if not flat_target.is_zero_approx():
 		rotation.y = atan2(-flat_target.x, -flat_target.z)
 	_apply_idle_pose(_pick_new_pose_index())
-	teleport_audio.play()
+	WorldNet.play_shared(teleport_audio)
 	hunt_started.emit(target, ambush_position)
 
 
@@ -403,10 +439,10 @@ func _disappear() -> void:
 	var was_observed := is_observed
 	if state == StatueState.ATTACK_WINDUP:
 		attack_cancelled.emit()
-	attack_audio.stop()
-	spotted_jumpscare_audio.stop()
+	WorldNet.stop_shared(attack_audio)
+	WorldNet.stop_shared(spotted_jumpscare_audio)
 	if state != StatueState.HIDDEN:
-		teleport_audio.play()
+		WorldNet.play_shared(teleport_audio)
 
 	state = StatueState.HIDDEN
 	velocity = Vector3.ZERO
@@ -430,11 +466,11 @@ func _enter_hidden(delay: float, play_sound: bool = true) -> void:
 	hidden_timer = maxf(delay, 0.0)
 	spotted_disappear_timer = -1.0
 	spotted_jumpscare_played = false
-	spotted_jumpscare_audio.stop()
+	WorldNet.stop_shared(spotted_jumpscare_audio)
 	current_target = null
 	velocity = Vector3.ZERO
 	if play_sound:
-		teleport_audio.play()
+		WorldNet.play_shared(teleport_audio)
 	_set_manifested(false)
 
 
@@ -516,7 +552,7 @@ func _try_step_up(horizontal_motion: Vector3) -> void:
 func _freeze_statue(delta: float) -> void:
 	if state == StatueState.ATTACK_WINDUP:
 		attack_cancelled.emit()
-		attack_audio.stop()
+		WorldNet.stop_shared(attack_audio)
 	state = StatueState.FROZEN
 	unseen_time = 0.0
 	attack_timer = 0.0
@@ -540,16 +576,7 @@ func _update_unseen_behavior(delta: float) -> void:
 		_update_attack_windup(delta)
 		return
 
-	# Checked before the grace period below: at this range the blink itself is
-	# the whole event, so it must not wait out even a fraction of a second.
-	if _try_blink_kill():
-		return
-
-	var effective_grace_time := unseen_grace_time
-	if is_instance_valid(current_target) and 'eyes_closed' in current_target and current_target.eyes_closed:
-		effective_grace_time = minf(unseen_grace_time, blink_unseen_grace_time)
-
-	if unseen_time < effective_grace_time or not is_instance_valid(current_target):
+	if unseen_time < unseen_grace_time or not is_instance_valid(current_target):
 		velocity.x = move_toward(velocity.x, 0.0, acceleration * delta)
 		velocity.z = move_toward(velocity.z, 0.0, acceleration * delta)
 		return
@@ -608,28 +635,6 @@ func _stalk_target(delta: float, target_offset: Vector3) -> void:
 	speed += lerpf(0.0, 1.5, night_aggression)
 	speed = minf(speed, maximum_speed)
 	var movement_acceleration := acceleration
-	var target_is_blinking: bool = is_instance_valid(current_target) \
-		and 'eyes_closed' in current_target \
-		and current_target.eyes_closed
-	if target_is_blinking:
-		var distance_span := maxf(
-			blink_lunge_far_distance - blink_lunge_near_distance,
-			0.01
-		)
-		var distance_ratio := clampf(
-			(target_offset.length() - blink_lunge_near_distance) / distance_span,
-			0.0,
-			1.0
-		)
-		# Smooth the curve so middle distances escalate naturally while the far
-		# end still delivers the dramatic multi-metre rush the blink promises.
-		distance_ratio = distance_ratio * distance_ratio * (3.0 - 2.0 * distance_ratio)
-		speed *= lerpf(
-			blink_lunge_near_speed_multiplier,
-			blink_lunge_far_speed_multiplier,
-			distance_ratio
-		)
-		movement_acceleration *= blink_lunge_acceleration_multiplier
 	var burst := lerpf(0.82, 1.18, sin(movement_phase * 0.63) * 0.5 + 0.5)
 	var desired_velocity := direction * speed * burst
 	velocity.x = move_toward(velocity.x, desired_velocity.x, movement_acceleration * delta)
@@ -669,40 +674,6 @@ func _navigation_direction(fallback_offset: Vector3) -> Vector3:
 	return Vector3.ZERO
 
 
-## Closes the distance the statue has already won: a player who blinks inside
-## blink_kill_distance is killed on the spot, with no wind-up to react to. It
-## still obeys everything a normal swing does - dev suspension, the floor/
-## ceiling height limit and the occlusion ray - so it cannot reach through a
-## wall or a storey.
-func _try_blink_kill() -> bool:
-	if blink_kill_distance <= 0.0 or _attacks_blocked():
-		return false
-	if not is_instance_valid(current_target):
-		return false
-	if not ('eyes_closed' in current_target) or not current_target.eyes_closed:
-		return false
-
-	var offset := current_target.global_position - global_position
-	if absf(offset.y) > max_attack_height_difference:
-		return false
-	offset.y = 0.0
-	if offset.length() > blink_kill_distance:
-		return false
-	if not _has_attack_line_of_sight(current_target):
-		return false
-
-	velocity.x = 0.0
-	velocity.z = 0.0
-	attack_audio.play()
-	attack_started.emit(current_target)
-	_apply_attack_pose(1.0)
-	if current_target.has_method('kill_by_ghost'):
-		current_target.kill_by_ghost(self)
-	state = StatueState.COOLDOWN
-	cooldown_timer = attack_cooldown
-	return true
-
-
 func _begin_attack() -> void:
 	if _attacks_blocked():
 		return
@@ -710,14 +681,14 @@ func _begin_attack() -> void:
 	attack_timer = attack_windup
 	velocity.x = 0.0
 	velocity.z = 0.0
-	attack_audio.play()
+	WorldNet.play_shared(attack_audio)
 	attack_started.emit(current_target)
 
 
 func _update_attack_windup(delta: float) -> void:
 	if _attacks_blocked():
 		attack_cancelled.emit()
-		attack_audio.stop()
+		WorldNet.stop_shared(attack_audio)
 		attack_timer = 0.0
 		state = StatueState.COOLDOWN
 		cooldown_timer = maxf(cooldown_timer, attack_cooldown)
@@ -824,6 +795,8 @@ func _find_ambush_position(target: CharacterBody3D) -> Vector3:
 				continue
 
 			var spawn_position := nav_point + Vector3.UP * 0.02
+			if not _is_position_clear_of_players(spawn_position):
+				continue
 			if not _is_position_observed_by_any_player(spawn_position):
 				return spawn_position
 		return Vector3.INF
@@ -839,6 +812,8 @@ func _find_ambush_position(target: CharacterBody3D) -> Vector3:
 			floor_y + 0.02,
 			target.global_position.z + sin(angle) * distance
 		)
+		if not _is_position_clear_of_players(candidate):
+			continue
 		if not _is_position_observed_by_any_player(candidate):
 			return candidate
 	return Vector3.INF
@@ -853,11 +828,28 @@ func _player_foot_y(player: CharacterBody3D) -> float:
 	return player.global_position.y
 
 
+## The ambush radius above is measured against the hunted player only, and the
+## candidate merely has to be unseen. Neither says anything about the rest of
+## the team: a point 18 m behind the target can be a metre behind somebody else
+## who happens not to be looking that way, and that teammate then has a statue
+## in their face with no warning at all. Measured against real player positions
+## rather than their navmesh projections, because a player on a stair tread or
+## on top of furniture projects several metres from where they actually stand -
+## which is the same way a candidate could land next to the target itself.
+func _is_position_clear_of_players(position: Vector3) -> bool:
+	for player: CharacterBody3D in _living_players():
+		var flat_offset := Vector2(
+			player.global_position.x - position.x,
+			player.global_position.z - position.z
+		)
+		if flat_offset.length() < ambush_min_distance:
+			return false
+	return true
+
+
 func _is_position_observed_by_any_player(position: Vector3) -> bool:
 	var observation_point := position + Vector3.UP * observation_point_height
 	for player: CharacterBody3D in _living_players():
-		if 'eyes_closed' in player and player.eyes_closed:
-			continue
 		var camera := player.get_node_or_null('CameraPivot/Camera3D') as Camera3D
 		if camera and _camera_can_see_point(camera, player, observation_point):
 			return true
@@ -891,9 +883,6 @@ func _is_observed_by_any_player() -> bool:
 			continue
 		if 'is_alive' in player and not player.is_alive:
 			continue
-		if 'eyes_closed' in player and player.eyes_closed:
-			continue
-
 		var camera := player.get_node_or_null('CameraPivot/Camera3D') as Camera3D
 		if camera and _camera_can_see_point(camera, player, observation_point):
 			return true
@@ -1073,7 +1062,7 @@ func _play_spotted_jumpscare_once() -> void:
 	if spotted_jumpscare_played:
 		return
 	spotted_jumpscare_played = true
-	spotted_jumpscare_audio.play()
+	WorldNet.play_shared(spotted_jumpscare_audio)
 	spotted_jumpscare_started.emit()
 
 

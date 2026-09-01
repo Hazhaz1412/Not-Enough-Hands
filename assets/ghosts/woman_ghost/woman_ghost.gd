@@ -9,7 +9,7 @@ extends CharacterBody3D
 @export var walk_seconds := 6.0
 @export_category("Enemy Movement")
 @export var chase_enabled := true
-@export var chase_speed := 1.8
+@export var chase_speed := 2.25
 @export var acceleration := 7.0
 @export var stopping_distance := 1.35
 

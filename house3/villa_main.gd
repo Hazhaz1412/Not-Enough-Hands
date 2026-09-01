@@ -45,13 +45,26 @@ const VILLA_STOREY := 3.5
 ## Height of the leaf's centre above the door node's own origin.
 const DEFENSE_DOOR_LEAF_RISE := 1.15
 
-## The villa has seven entrances and every one of them can break, so "one hunter
-## per breach" had no ceiling at all. It matters more now than it used to for two
-## reasons: a huntsman never leaves the house any more, so they only ever
-## accumulate; and each one is a three-hundred-part body, so the fourth is a
-## frame-rate problem before it is a difficulty problem. Three of them in a
-## building this size is already everywhere at once.
-const MAX_BREACH_HUNTERS := 3
+## One huntsman is present from the beginning. A second is the only reinforcement
+## the villa can ever create, and it stays out until three in-game hours have
+## elapsed. This keeps the threat count deterministic in local and multiplayer.
+const MAX_HUNTERS := 2
+const SECOND_HUNTER_UNLOCK_MINUTES := 180
+
+## These wall-hung and hand-sized props are visual dressing. Giving them a
+## physics body costs memory and ray-query work without changing movement.
+const NON_SOLID_FURNITURE_ASSETS := [
+	"Mirror.fbx",
+	"Painting.fbx",
+	"Painting 2.fbx",
+	"Painting 3.fbx",
+	"Poster 1.fbx",
+	"Simple Curtains Closed.fbx",
+	"Vase 1.fbx",
+	"Vase 2.fbx",
+	"Flower Pot Ac.fbx",
+	"Towel Pile.fbx",
+]
 
 ## Mirrors NetworkManager.SERVER_PEER_ID, which cannot be named here: see _net().
 const NETWORK_SERVER_PEER_ID := 1
@@ -65,8 +78,9 @@ var _two_sided_cache: Dictionary = {}
 ## at the opening instead of trying to search without a navigation map.
 var _hunters_waiting_for_navigation: Array[CharacterBody3D] = []
 var _breach_hunter_serial: int = 0
-## Every huntsman this level has spawned at a breach and not since freed.
-var _breach_hunters: Array[CharacterBody3D] = []
+var _second_hunter: CharacterBody3D = null
+var _deferred_second_hunter_door: Node3D = null
+var _night_clock: Node = null
 ## Set once the run has been decided, so the several things that can notice it
 ## in the same frame only end it once.
 var _run_over_pending: bool = false
@@ -81,16 +95,19 @@ func _ready() -> void:
 	_watch_breached_entrances()
 	_setup_player_replication()
 	_place_ghosts()
+	_night_clock = get_tree().get_first_node_in_group(&"night_clock")
+	if _night_clock and _night_clock.has_signal(&"minute_changed"):
+		_night_clock.connect(&"minute_changed", _on_hunter_clock_minute_changed)
 
-	for node: Node in house.find_children("*", "MeshInstance3D", true, false):
-		var mesh_instance := node as MeshInstance3D
-		if mesh_instance.mesh:
-			_make_mesh_two_sided(mesh_instance)
-			if not _has_authored_collision(mesh_instance):
-				mesh_instance.create_trimesh_collision()
-				_enable_backface_collision(mesh_instance)
+	_prepare_runtime_geometry()
 
-	_bake_navigation()
+	# Clients consume replicated ghost transforms and never query a navigation
+	# route. Voxelizing the full 80 x 60 m Villa on every peer only delays join.
+	if WorldNet.is_world_authority():
+		_bake_navigation()
+	else:
+		navigation_is_ready = true
+		navigation_ready.emit()
 
 
 # --- map wiring --------------------------------------------------------------
@@ -140,6 +157,11 @@ func _place_defense_doors() -> void:
 		# through so the far cellar door really is the one worth abandoning.
 		door.set("max_durability", float(anchor.get_meta("layers")) * 40.0)
 		door.set("repair_per_interaction", 60.0 / float(anchor.get_meta("repair_seconds")))
+		# add_child() above already ran the door's own _ready(), which filled it
+		# to the stock 100. Reset it again now that the spec's boarding budget is
+		# in place, or a 2-layer entrance starts at 100/80 and the attack
+		# director reads its damage ratio as "untouched" for the first 20 points.
+		door.call("reset_door")
 
 
 ## villa_main.tscn contains artist-baked editable architecture. Older bakes
@@ -173,10 +195,8 @@ func _clear_baked_entrance_wall(anchor: Marker3D) -> void:
 				collision.disabled = true
 
 
-## Every broken entrance adds one hunter at that breach, up to
-## `MAX_BREACH_HUNTERS`.  The dormant hunter in the scene remains for DevTools
-## only, so a door event produces one new threat rather than waking a global
-## singleton as well.
+## The authored hunter listens to these doors itself and answers the first open
+## breach. The villa only remembers a breach for the delayed second hunter.
 func _watch_breached_entrances() -> void:
 	for node: Node in get_tree().get_nodes_in_group("defense_doors"):
 		if node.has_signal("breached") and not node.is_connected("breached", _on_entrance_breached):
@@ -184,23 +204,50 @@ func _watch_breached_entrances() -> void:
 
 
 func _on_entrance_breached(door: Node) -> void:
-	# DefenseDoor disables its collider deferred during this signal.  Spawn on
-	# the next idle step so the CharacterBody enters an actually open doorway.
-	_spawn_hunter_at_breach.call_deferred(door)
-
-
-func _spawn_hunter_at_breach(door: Node) -> void:
 	var doorway := door as Node3D
-	if not is_instance_valid(doorway) or not HUNTER_GHOST:
+	if not is_instance_valid(doorway):
 		return
+	_deferred_second_hunter_door = doorway
+	# DefenseDoor disables its collider deferred during this signal. Spawn on the
+	# next idle step so the CharacterBody enters an actually open doorway.
+	_try_spawn_second_hunter.call_deferred()
+
+
+func _on_hunter_clock_minute_changed(_minutes_of_day: int, _formatted: String) -> void:
+	_try_spawn_second_hunter.call_deferred()
+
+
+## Defaults to true where no director is present - a bare villa scene, or a
+## smoke test - so this map keeps working on its own exactly as it did.
+func _escalation_allowed() -> bool:
+	var director := get_tree().get_first_node_in_group(&"game_director")
+	if director == null or not director.has_method(&"can_escalate"):
+		return true
+	return bool(director.call(&"can_escalate"))
+
+
+func _try_spawn_second_hunter() -> void:
 	# A client hears `breached` too - apply_network_state() emits it when the
 	# server's durability arrives - but the huntsman that answers it is one
 	# body for the whole session, spawned here and replicated to everyone.
 	if not WorldNet.is_world_authority():
 		return
-	if live_breach_hunter_count() >= MAX_BREACH_HUNTERS:
-		# The house is already full. Every further breach is still a hole the
-		# player has to live with - it just does not add a fourth body.
+	if is_instance_valid(_second_hunter) and not _second_hunter.is_queued_for_deletion():
+		return
+	if _night_clock == null \
+		or int(_night_clock.get("elapsed_game_minutes")) < SECOND_HUNTER_UNLOCK_MINUTES:
+		return
+	# The clock says the reinforcement is *allowed*; the director says whether
+	# now is the moment. This used to arrive on the bare clock alone, which put a
+	# second huntsman in the house at the same minute whether the team was ahead
+	# or being wiped. The check is retried on every clock minute, so a team under
+	# pressure only delays it - nothing here can cancel it.
+	if not _escalation_allowed():
+		return
+	var doorway := _deferred_second_hunter_door
+	if not _door_is_breached(doorway):
+		doorway = _first_breached_door()
+	if not is_instance_valid(doorway) or not HUNTER_GHOST:
 		return
 
 	_breach_hunter_serial += 1
@@ -209,18 +256,19 @@ func _spawn_hunter_at_breach(door: Node) -> void:
 		self,
 		doorway.global_position,
 		0.0,
-		"BreachHunter%02d" % _breach_hunter_serial
+		"BreachHunter%02d" % (_breach_hunter_serial + 1)
 	) as CharacterBody3D
 	if not hunter:
 		return
-	# This hunter belongs to one particular breach and must never let itself back
-	# in through a different one, which would put it outside the cap.
+	# This is the one delayed reinforcement. It enters this breach immediately and
+	# never subscribes to later doors, so no third hunter can be created.
 	hunter.set("entry_enabled", false)
 	if not hunter.has_method("spawn_from_breached_door") \
 		or not bool(hunter.call("spawn_from_breached_door", doorway)):
 		hunter.queue_free()
 		return
-	_breach_hunters.append(hunter)
+	_second_hunter = hunter
+	_deferred_second_hunter_door = null
 
 	if navigation_is_ready:
 		return
@@ -228,14 +276,26 @@ func _spawn_hunter_at_breach(door: Node) -> void:
 	_hunters_waiting_for_navigation.append(hunter)
 
 
-## How many breach huntsmen are actually still in the world. Prunes as it counts,
-## so a hunter that was freed for any reason gives its slot back.
-func live_breach_hunter_count() -> int:
-	for index: int in range(_breach_hunters.size() - 1, -1, -1):
-		var hunter := _breach_hunters[index]
-		if not is_instance_valid(hunter) or hunter.is_queued_for_deletion():
-			_breach_hunters.remove_at(index)
-	return _breach_hunters.size()
+func _door_is_breached(door: Node3D) -> bool:
+	return is_instance_valid(door) \
+		and "current_durability" in door \
+		and float(door.get("current_durability")) <= 0.0
+
+
+func _first_breached_door() -> Node3D:
+	for node: Node in get_tree().get_nodes_in_group(&"defense_doors"):
+		var door := node as Node3D
+		if _door_is_breached(door):
+			return door
+	return null
+
+
+func live_hunter_count() -> int:
+	var count := 0
+	for node: Node in get_tree().get_nodes_in_group(&"hunter_ghosts"):
+		if is_instance_valid(node) and not node.is_queued_for_deletion():
+			count += 1
+	return count
 
 
 func _activate_waiting_hunters() -> void:
@@ -374,10 +434,9 @@ func _build_player_from_spawn_data(data: Variant) -> Node:
 		# timer running out. Either can be the one that empties the house.
 		player.killed_by_ghost.connect(func(_ghost: Node3D) -> void: _check_run_over())
 		player.became_spectator.connect(_check_run_over)
-	player.walk_speed = 2.6
-	player.crouch_speed = 1.45
+	player.walk_speed = 3.5
+	player.crouch_speed = 1.8
 	player.sprint_speed_multiplier = 1.35
-	player.forced_blink_duration = 0.25
 	_configure_player_lighting.call_deferred(player)
 	return player
 
@@ -404,10 +463,10 @@ func _remove_network_player(peer_id: int) -> void:
 ## Is anybody still in the night?
 ##
 ## Asked here rather than in NetworkManager because "still in the run" is a
-## gameplay question - a downed player is still in it and can be picked back up,
-## a spectator is not - and this is where the session's players are made and
-## unmade. NetworkManager owns what to *do* about it; the same split as the
-## breaker and its minigame.
+## gameplay question. A downed player only has a rescue window while somebody
+## else is still standing; once no living player remains, nobody can complete a
+## revive and the run is over. NetworkManager owns what to *do* about it; the
+## same split as the breaker and its minigame.
 func _check_run_over() -> void:
 	if _run_over_pending or not _network_session_active() or not multiplayer.is_server():
 		return
@@ -419,7 +478,7 @@ func _check_run_over() -> void:
 	for node: Node in players:
 		if node.is_queued_for_deletion():
 			continue
-		if bool(node.get("is_alive")) or bool(node.get("is_downed")):
+		if bool(node.get("is_alive")):
 			return
 	_end_run_after_pause("Cả đội đã ngã xuống. Về phòng chờ để chơi lại.")
 
@@ -474,12 +533,12 @@ func _place_ghosts() -> void:
 		# where that room's own table stands.
 		statue.global_position = chapel.get_meta("clear_point", chapel.global_position)
 
-	# Keep the authored huntsman outside as a dormant DevTools template.  Live
-	# villa breaches create a fresh hunter at the affected door instead.
+	# The first hunter is a real threat: it waits outside, listens to the authored
+	# defense doors and begins patrolling after it walks through a breach.
 	var hunter := get_node_or_null("HunterGhost") as Node3D
 	if hunter:
 		hunter.global_position = Vector3(40.0, 0.0, -12.0)
-		hunter.set("entry_enabled", false)
+		hunter.set("entry_enabled", true)
 
 
 func _room_marker(room_id: String) -> Node3D:
@@ -733,7 +792,8 @@ func _add_navigation_link(
 # --- rendering helpers -------------------------------------------------------
 
 ## Props keep the collider they ship with; the architecture is already boxed by
-## VillaHouse, so only free-standing kit meshes need a generated trimesh body.
+## VillaHouse. Imported furniture without authored collision receives one cheap
+## aggregate box per asset instead of one concave trimesh per child mesh.
 func _has_authored_collision(mesh_instance: MeshInstance3D) -> bool:
 	var ancestor := mesh_instance.get_parent()
 	while ancestor and ancestor != house:
@@ -741,6 +801,85 @@ func _has_authored_collision(mesh_instance: MeshInstance3D) -> bool:
 			return true
 		ancestor = ancestor.get_parent()
 	return false
+
+
+func _prepare_runtime_geometry() -> void:
+	var collision_roots: Dictionary = {}
+	for node: Node in house.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		if not mesh_instance.mesh:
+			continue
+		_make_mesh_two_sided(mesh_instance)
+		if _has_authored_collision(mesh_instance):
+			continue
+		var collision_root := _source_asset_root(mesh_instance)
+		if not collision_root:
+			collision_root = mesh_instance
+		collision_roots[collision_root] = true
+
+	for root_variant: Variant in collision_roots:
+		var collision_root := root_variant as Node3D
+		if not collision_root or _is_non_solid_furniture(collision_root):
+			continue
+		_create_simplified_collision(collision_root)
+
+
+func _source_asset_root(node: Node) -> Node3D:
+	var current := node
+	while current and current != house:
+		if current.has_meta("source_asset"):
+			return current as Node3D
+		current = current.get_parent()
+	return null
+
+
+func _is_non_solid_furniture(asset_root: Node3D) -> bool:
+	var source := String(asset_root.get_meta("source_asset", ""))
+	if not source.begins_with(VillaHouse.FURNITURE_ROOT):
+		return false
+	return source.get_file() in NON_SOLID_FURNITURE_ASSETS
+
+
+func _create_simplified_collision(asset_root: Node3D) -> void:
+	if asset_root.has_node("SimplifiedCollision"):
+		return
+	var meshes: Array[MeshInstance3D] = []
+	if asset_root is MeshInstance3D:
+		meshes.append(asset_root as MeshInstance3D)
+	for child: Node in asset_root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh:
+			meshes.append(mesh_instance)
+	if meshes.is_empty():
+		return
+
+	var minimum := Vector3(INF, INF, INF)
+	var maximum := Vector3(-INF, -INF, -INF)
+	var world_to_root := asset_root.global_transform.affine_inverse()
+	for mesh_instance: MeshInstance3D in meshes:
+		var bounds := mesh_instance.mesh.get_aabb()
+		var mesh_to_root := world_to_root * mesh_instance.global_transform
+		for x: int in 2:
+			for y: int in 2:
+				for z: int in 2:
+					var corner := bounds.position + bounds.size * Vector3(x, y, z)
+					var point := mesh_to_root * corner
+					minimum = minimum.min(point)
+					maximum = maximum.max(point)
+
+	var size := maximum - minimum
+	if size.x <= 0.01 or size.y <= 0.01 or size.z <= 0.01:
+		return
+	var body := StaticBody3D.new()
+	body.name = "SimplifiedCollision"
+	asset_root.add_child(body)
+	var shape := BoxShape3D.new()
+	shape.size = size
+	var collision := CollisionShape3D.new()
+	collision.name = "Collision"
+	collision.position = (minimum + maximum) * 0.5
+	collision.shape = shape
+	body.add_child(collision)
 
 
 ## The kit's wall and floor panels are single-sided, and half of them are seen
@@ -761,33 +900,25 @@ func _make_mesh_two_sided(mesh_instance: MeshInstance3D) -> void:
 		mesh_instance.set_surface_override_material(surface_index, _two_sided_cache[key])
 
 
-func _enable_backface_collision(mesh_instance: MeshInstance3D) -> void:
-	for node: Node in mesh_instance.find_children("*", "CollisionShape3D", true, false):
-		var collision_shape := node as CollisionShape3D
-		var concave_shape := collision_shape.shape as ConcavePolygonShape3D
-		if concave_shape:
-			concave_shape.backface_collision = true
-
-
 func _apply_horror_lighting() -> void:
 	var environment := world_environment.environment
 	environment.ambient_light_color = Color(0.075, 0.105, 0.15)
-	environment.ambient_light_energy = 0.22
-	environment.tonemap_exposure = 0.84
+	environment.ambient_light_energy = 0.28
+	environment.tonemap_exposure = 0.9
 	environment.adjustment_enabled = true
-	environment.adjustment_brightness = 0.86
+	environment.adjustment_brightness = 0.92
 	environment.adjustment_contrast = 1.14
 	environment.adjustment_saturation = 0.68
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.075, 0.105, 0.13)
 	environment.fog_light_energy = 0.42
-	environment.fog_density = 0.042
+	environment.fog_density = 0.036
 	environment.fog_height = 2.0
 	environment.fog_height_density = 0.08
 	environment.fog_aerial_perspective = 0.8
 	environment.fog_sky_affect = 1.0
 	environment.volumetric_fog_enabled = true
-	environment.volumetric_fog_density = 0.038
+	environment.volumetric_fog_density = 0.033
 	environment.volumetric_fog_albedo = Color(0.38, 0.46, 0.5)
 	environment.volumetric_fog_emission = Color(0.008, 0.012, 0.016)
 	environment.volumetric_fog_emission_energy = 0.48

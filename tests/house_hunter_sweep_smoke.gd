@@ -2,7 +2,7 @@ extends SceneTree
 
 ## The flat-room smoke test proves the huntsman's rules; this proves it can
 ## actually apply them inside House2. It is dropped into the main hall with
-## nothing to track, and has to quarter the real building - which means routing
+## no player history to track, and has to quarter the real building - routing
 ## across the baked navmesh, through doorways and between rooms - rather than
 ## grinding against the first wall it meets.
 
@@ -43,7 +43,7 @@ func _run() -> void:
 		return
 
 	# Isolate the sweep: the other two ghosts stay still, no doors are attacked,
-	# and the huntsman is given nothing to smell and nothing to see, so the only
+	# and the huntsman is given nothing to hear and nothing to see, so the only
 	# thing that can move it is its own search route.
 	(game.get_node('DoorAttackDirector') as Node).set('automatic_waves', false)
 	(game.get_node('StatueGhost') as Node).set_physics_process(false)
@@ -51,7 +51,6 @@ func _run() -> void:
 	player.set_physics_process(false)
 	player.global_position = Vector3(0.0, 100.0, 0.0)
 	hunter.set('entry_enabled', false)
-	hunter.set('nose_range', 0.0)
 	hunter.set('sight_range', 0.0)
 	hunter.set('cast_duration', 0.4)
 	# Faster than it walks in the game, purely so the test does not have to run
@@ -110,11 +109,9 @@ func _run() -> void:
 		)
 		return
 
-	# Second half: give it its senses back, put a motionless player upstairs, and
-	# require it to arrive. Standing still is the counterplay to the crawler and
-	# it must not work here - and "it never came" is the exact way this creature
-	# fails when its search or its pathing quietly breaks.
-	hunter.set('nose_range', 8.5)
+	# Second half: give it sight back, put a motionless player upstairs, and require
+	# the patrol to eventually bring it into the room. This verifies wandering the
+	# house replaces the deleted footprint system rather than leaving the AI idle.
 	hunter.set('sight_range', 15.0)
 	# Player upstairs in the west bedroom, motionless; huntsman two floors below
 	# in the boiler room with its memory wiped. It has to search its way there.

@@ -359,6 +359,7 @@ func _add_moonlight(parent: Node3D, at: Vector3, base: float, inward: Vector3) -
 	light.shadow_bias = 0.02
 	light.shadow_normal_bias = 1.5
 	light.visible = false
+	light.add_to_group(&"local_light_sources")
 	parent.add_child(light)
 	_lights.append(light)
 

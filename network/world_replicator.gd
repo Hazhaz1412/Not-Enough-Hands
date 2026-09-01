@@ -25,7 +25,7 @@ extends Node
 ## |---|---|---|---|
 ## | fast | 20 Hz | unreliable ordered | ghost and loose-item transforms |
 ## | slow | 5 Hz | reliable | door durability, power reserve, the brazier |
-## | events | on change | reliable | spawn/despawn, pickup, clock, blackout |
+## | events | on change | reliable | spawn/despawn, pickup, clock, blackout, sound |
 ##
 ## The fast channel is allowed to drop packets because a newer one is always
 ## right behind it. Everything whose *loss* would desynchronise the world -
@@ -43,11 +43,13 @@ extends Node
 ##
 ## Two kinds of thing are replicated and they are addressed differently.
 ##
-## Authored nodes - the three ghosts each map's scene contains, the seven
+## Authored nodes - the ghosts each map's scene contains, the seven
 ## defense doors, the power manager, the clock - exist on every peer already
-## because they are in the same scene file. Ghosts are addressed by their index
-## in a name-sorted list captured when the scene binds; doors by their own
-## `entrance_id`. Nothing has to be spawned for them.
+## because they are in the same scene file. Ghosts are addressed by their path
+## relative to the current scene; doors by their own `entrance_id`. Nothing has
+## to be spawned for them. A path travels with every authored-ghost state so an
+## older client that lacks a newly added ghost cannot shift Darkness state onto
+## Hunter or Hunter state onto Statue.
 ##
 ## Runtime things - the huntsmen that come through a breach, the totems and
 ## firewood the ritual drops - do not exist on a client at all, so they carry a
@@ -61,8 +63,8 @@ const ENTITY_PREFIX := "RepEnt_"
 
 # --- shared by both sides ---------------------------------------------------
 var _scene_root: Node = null
-## Ghosts the scene itself authored, name-sorted so server and client agree on
-## the order without sending a path per packet.
+## Ghosts authored under the current scene. Packet identity comes from each
+## ghost's relative NodePath, so this array's order is never an identity.
 var _ghosts: Array[Node3D] = []
 ## replication id -> node, for the things that are spawned rather than authored.
 var _entities: Dictionary = {}
@@ -123,13 +125,17 @@ func _bind_scene_if_changed() -> void:
 	if _scene_root == null:
 		return
 	# Captured once, so a huntsman that later comes through a breach is a
-	# replicated entity rather than silently shifting every ghost's index.
+	# replicated entity. Restrict the group query to this scene: autoloads and a
+	# scene being torn down must never become authored ghosts for the new map.
 	var authored: Array[Node3D] = []
 	for node: Node in get_tree().get_nodes_in_group(&"hostile_ghosts"):
 		var ghost := node as Node3D
-		if ghost:
+		if ghost and (ghost == _scene_root or _scene_root.is_ancestor_of(ghost)):
 			authored.append(ghost)
-	authored.sort_custom(func(a: Node3D, b: Node3D) -> bool: return a.name < b.name)
+	authored.sort_custom(
+		func(a: Node3D, b: Node3D) -> bool:
+			return _path_from_scene(a) < _path_from_scene(b)
+	)
 	_ghosts = authored
 
 
@@ -183,6 +189,14 @@ func spawn(
 		return null
 	if not NetworkManager.is_world_authority():
 		return null
+	if NetworkManager.session_active:
+		# Runtime systems may spawn during their deferred startup, before this
+		# autoload's first physics tick. Binding now prevents that first tick from
+		# clearing the new registry and resetting _next_entity_id back to 1.
+		_bind_scene_if_changed()
+		if _scene_root == null:
+			push_warning("WorldReplicator: cannot spawn before a current scene exists")
+			return null
 	var node := scene.instantiate()
 	if not node_name.is_empty():
 		node.name = node_name
@@ -202,9 +216,19 @@ func spawn(
 	_entity_ids[node.get_instance_id()] = id
 	_entity_scene[id] = scene_path if not scene_path.is_empty() else scene.resource_path
 	_holders[id] = 0
-	_spawn_entity.rpc(
-		id, str(_entity_scene[id]), _path_from_scene(parent), position, rotation_y, str(node.name)
-	)
+	var parent_path := _path_from_scene(parent)
+	for peer_id: int in NetworkManager.replication_ready_peers:
+		if peer_id == NetworkManager.SERVER_PEER_ID:
+			continue
+		_spawn_entity.rpc_id(
+			peer_id,
+			id,
+			str(_entity_scene[id]),
+			parent_path,
+			position,
+			rotation_y,
+			str(node.name)
+		)
 	return node
 
 
@@ -225,6 +249,61 @@ func report_holder(item: Node, peer_id: int) -> void:
 	_set_entity_holder.rpc(id, peer_id)
 
 
+## Plays one sound on every peer, at the node that owns it.
+##
+## A client runs no ghost brain, so every sound a brain fires - the Huntsman's
+## horn, the crawler's scream, the statue's teleport - was heard on the host
+## alone. `defense_door.gd` re-derives its own audio from the phase it already
+## receives, but a ghost's one-shots do not follow from any single value in the
+## 20 Hz packet, so they travel as events instead.
+##
+## The player node is addressed by its path under the current scene, which
+## covers an authored ghost and a huntsman spawned at a breach alike. Pitch and
+## volume come along because every call site randomises them just before
+## playing, and a client that re-rolled its own would not match.
+func report_sound(player: Node, offset: float, pitch: float, volume_db: float) -> void:
+	if not NetworkManager.session_active or not NetworkManager.is_world_authority():
+		return
+	var path := _path_from_scene(player)
+	if path.is_empty():
+		return
+	_play_sound.rpc(path, offset, pitch, volume_db)
+
+
+## The counterpart for the few of those that are long enough to need cutting
+## short - the statue's attack drone, the crawler's scream. Without it a client
+## would keep playing a sound the server had already stopped.
+func report_sound_stop(player: Node) -> void:
+	if not NetworkManager.session_active or not NetworkManager.is_world_authority():
+		return
+	var path := _path_from_scene(player)
+	if path.is_empty():
+		return
+	_stop_sound.rpc(path)
+
+
+## The one way to read a node back out of `_entities`, on either side.
+##
+## A registry entry routinely outlives its node: `queue_free()` completes at the
+## end of the frame while the sweep below only runs on the 20 Hz tick, so
+## anything freed in between is already gone by the time the next tick looks at
+## it. Reading that through a type annotation (`var n: Node = ...`) or an `as`
+## cast does not quietly yield null - GDScript raises "previously freed
+## instance" / "cast a freed object" and *aborts the whole function on the
+## spot*. That is what a team wipe used to do here: the ritual takes its items
+## back as the run empties, the sweep then died on the first freed one before it
+## could erase the entry, and because the entry stayed every later sweep and
+## every entity broadcast died on it too - permanently, and twice per tick.
+##
+## Reading through an untyped local is the only form that survives, so it lives
+## in one place instead of at each of the ten call sites.
+func _live_entity(id: int) -> Node:
+	var value: Variant = _entities.get(id)
+	if not is_instance_valid(value):
+		return null
+	return value
+
+
 ## Deliberately a sweep rather than a `tree_exiting` hook. `reparent()` fires
 ## the tree signals too, and an item changes parent every single time it is
 ## picked up or handed to the brazier - hooking those would despawn a totem on
@@ -233,17 +312,29 @@ func report_holder(item: Node, peer_id: int) -> void:
 func _sweep_dead_entities() -> void:
 	var dead: Array[int] = []
 	for id: int in _entities:
-		var node: Node = _entities[id]
-		if not is_instance_valid(node) or node.is_queued_for_deletion():
+		var node := _live_entity(id)
+		if node == null or node.is_queued_for_deletion():
 			dead.append(id)
 	for id: int in dead:
-		var node: Node = _entities[id]
-		if is_instance_valid(node):
+		var node := _live_entity(id)
+		if node:
 			_entity_ids.erase(node.get_instance_id())
+		else:
+			_forget_entity_instance(id)
 		_entities.erase(id)
 		_entity_scene.erase(id)
 		_holders.erase(id)
 		_despawn_entity.rpc(id)
+
+
+## A node that is already gone cannot be asked for its instance id, so the
+## reverse lookup has to be found by value. Left behind, that stale key would
+## hand the dead entity's number to whatever node Godot next recycles the id to.
+func _forget_entity_instance(id: int) -> void:
+	for instance_id: Variant in _entity_ids.keys():
+		if int(_entity_ids[instance_id]) == id:
+			_entity_ids.erase(instance_id)
+			return
 
 
 # =============================================================================
@@ -272,7 +363,7 @@ func _broadcast_slow() -> void:
 		_sync_slow.rpc_id(peer_id, doors, power, brazier)
 
 
-## Transform, state and velocity - which is everything all three ghosts need to
+## Transform, state and velocity - which is everything the authored ghosts need to
 ## present themselves.
 ##
 ## Each of `hunter_ghost.gd`, `crawler_ghost.gd` and `statue_ghost.gd` already
@@ -284,11 +375,18 @@ func _broadcast_slow() -> void:
 ## nothing about clips or sway does.
 func _collect_ghosts() -> Array:
 	var out: Array = []
-	for ghost: Node3D in _ghosts:
+	# Untyped for the same reason _live_entity() exists: a typed loop variable
+	# aborts this function outright the first time the scene frees a ghost.
+	for ghost: Variant in _ghosts:
 		if not is_instance_valid(ghost):
-			out.append([])
 			continue
-		out.append(_ghost_state(ghost))
+		var path := _path_from_scene(ghost as Node)
+		if path.is_empty():
+			continue
+		# Authored ghost identity is explicit. Never infer it from this row's
+		# position in the packet: peers running different scene revisions may
+		# legitimately have different authored-ghost lists.
+		out.append([path, _ghost_state(ghost)])
 	return out
 
 
@@ -299,6 +397,9 @@ func _ghost_state(ghost: Node3D) -> Array:
 	var velocity := Vector3.ZERO
 	if ghost is CharacterBody3D:
 		velocity = (ghost as CharacterBody3D).velocity
+	var custom_state: Array = []
+	if ghost.has_method(&"get_replication_state"):
+		custom_state = ghost.call(&"get_replication_state") as Array
 	return [
 		ghost.global_position,
 		ghost.rotation.y,
@@ -306,12 +407,13 @@ func _ghost_state(ghost: Node3D) -> Array:
 		ghost.visible,
 		velocity,
 		_ghost_manifested(ghost),
+		custom_state,
 	]
 
 
 ## Whether the *body* is showing, which is not the same as `ghost.visible`.
 ##
-## All three ghosts leave their root visible and hide the rig instead, through
+## The authored ghosts leave their root visible and hide the rig instead, through
 ## their own `_set_manifested()` - which also owns the collision layers, the
 ## lantern and the footstep audio. That call is only ever made by the brain, and
 ## a client does not run the brain, so without this a replicated huntsman
@@ -322,7 +424,7 @@ func _ghost_manifested(ghost: Node3D) -> bool:
 	return body == null or body.visible
 
 
-## The rig each ghost hides. The three authored ones keep it under `VisualRoot`;
+## The rig each ghost hides. Hunter, Crawler and Statue keep it under `VisualRoot`;
 ## the Darkness ghost is built on the reusable WomanGhost body and hides
 ## `AnimatedModel` instead. A ghost whose rig is under neither name simply has
 ## no manifested state to replicate.
@@ -337,8 +439,8 @@ func _ghost_body(ghost: Node3D) -> Node3D:
 func _collect_entities() -> Array:
 	var out: Array = []
 	for id: int in _entities:
-		var node := _entities[id] as Node3D
-		if not is_instance_valid(node):
+		var node := _live_entity(id) as Node3D
+		if node == null:
 			continue
 		# A carried item follows its holder on the client too, so there is no
 		# point streaming a transform for it.
@@ -347,7 +449,7 @@ func _collect_entities() -> Array:
 		# A huntsman that came through a breach is spawned rather than authored,
 		# so it travels as an entity - but it is still a body with a walk cycle.
 		# The longer row is what lets a client animate it instead of sliding it.
-		if node.has_method(&"_update_presentation"):
+		if node.is_in_group(&"hostile_ghosts"):
 			out.append([id] + _ghost_state(node))
 			continue
 		out.append([id, node.global_position, node.rotation.y])
@@ -379,7 +481,16 @@ func _collect_power() -> Array:
 		bool(power.get("is_blackout")),
 		bool(power.get("is_regional_blackout")),
 		power.get("regional_blackout_center") as Vector3,
+		_collect_electrical_zones(),
 	]
+
+
+func _collect_electrical_zones() -> Array:
+	var out: Array = []
+	for node: Node in get_tree().get_nodes_in_group(&"electrical_zones"):
+		if node.has_method(&"get_network_state"):
+			out.append(node.call(&"get_network_state"))
+	return out
 
 
 ## There is only ever one brazier in a map, so it needs no id.
@@ -430,8 +541,8 @@ func _on_peer_replication_ready(peer_id: int) -> void:
 func _build_snapshot() -> Dictionary:
 	var spawned: Array = []
 	for id: int in _entities:
-		var node := _entities[id] as Node3D
-		if not is_instance_valid(node):
+		var node := _live_entity(id) as Node3D
+		if node == null:
 			continue
 		spawned.append([
 			id,
@@ -441,6 +552,7 @@ func _build_snapshot() -> Dictionary:
 			node.rotation.y,
 			int(_holders.get(id, 0)),
 			str(node.name),
+			_ghost_state(node) if node.is_in_group(&"hostile_ghosts") else [],
 		])
 	return {
 		"entities": spawned,
@@ -477,24 +589,40 @@ func _node_from_scene_path(path: String) -> Node:
 @rpc("authority", "call_remote", "unreliable_ordered", 3)
 func _sync_fast(ghosts: Array, entities: Array) -> void:
 	_bind_scene_if_changed()
-	for index: int in mini(ghosts.size(), _ghosts.size()):
-		var state: Array = ghosts[index]
-		if state.size() < 5:
-			continue
-		_apply_ghost(_ghosts[index], state)
+	_apply_authored_ghosts(ghosts)
 	for row: Array in entities:
 		if row.size() < 3:
 			continue
-		var node := _entities.get(int(row[0])) as Node3D
-		if not is_instance_valid(node):
+		var node := _live_entity(int(row[0])) as Node3D
+		if node == null:
 			continue
 		# A ghost entity carries the whole ghost state behind its id; a loose
 		# totem carries only a transform.
-		if row.size() > 3:
+		if row.size() >= 7 and node.is_in_group(&"hostile_ghosts"):
 			_apply_ghost(node, row.slice(1))
 			continue
-		node.global_position = row[1]
-		node.rotation.y = row[2]
+		if row.size() == 3:
+			node.global_position = row[1]
+			node.rotation.y = row[2]
+
+
+## Applies authored state by scene-relative identity, never by packet index.
+## Legacy packets contain a raw state Array instead of [NodePath, state]; they
+## are deliberately ignored because guessing their target recreates the exact
+## Darkness/Hunter/Statue mismatch this protocol is meant to prevent.
+func _apply_authored_ghosts(rows: Array) -> void:
+	for row_value: Variant in rows:
+		if not row_value is Array:
+			continue
+		var row := row_value as Array
+		if row.size() < 2 or not row[1] is Array:
+			continue
+		var ghost := _node_from_scene_path(str(row[0])) as Node3D
+		if ghost == null or not ghost.is_in_group(&"hostile_ghosts"):
+			continue
+		var state := row[1] as Array
+		if state.size() >= 5:
+			_apply_ghost(ghost, state)
 
 
 ## The ghost is placed rather than simulated, and then asked to present itself.
@@ -521,6 +649,8 @@ func _apply_ghost(ghost: Node3D, state: Array) -> void:
 		var manifested := bool(state[5])
 		if _ghost_manifested(ghost) != manifested:
 			ghost.call(&"_set_manifested", manifested)
+	if state.size() >= 7 and ghost.has_method(&"apply_replication_state"):
+		ghost.call(&"apply_replication_state", state[6])
 	if ghost.has_method(&"_update_presentation"):
 		ghost.call(&"_update_presentation", FAST_INTERVAL)
 
@@ -563,6 +693,22 @@ func _apply_power(power: Array) -> void:
 	var manager := _power()
 	if manager and manager.has_method(&"apply_network_state"):
 		manager.call(&"apply_network_state", power[0], power[1], power[2], power[3])
+	if power.size() < 5:
+		return
+	var zones_by_id: Dictionary = {}
+	for node: Node in get_tree().get_nodes_in_group(&"electrical_zones"):
+		zones_by_id[String(node.get("zone_id"))] = node
+	for row: Variant in power[4]:
+		if not row is Array or row.size() < 4:
+			continue
+		var zone: Node = zones_by_id.get(String(row[0]))
+		if zone and zone.has_method(&"apply_network_state"):
+			# row[4] is the darkness's jam list. Older rows without it still
+			# apply; the zone defaults it to "nothing jammed".
+			var locked: PackedStringArray = (
+				row[4] if row.size() >= 5 else PackedStringArray()
+			)
+			zone.call(&"apply_network_state", bool(row[1]), bool(row[2]), row[3], locked)
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -570,6 +716,25 @@ func _sync_clock(elapsed: int, minutes_of_day: int, won: bool) -> void:
 	var clock := _clock()
 	if clock and clock.has_method(&"apply_network_time"):
 		clock.call(&"apply_network_time", elapsed, minutes_of_day, won)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _play_sound(path: String, offset: float, pitch: float, volume_db: float) -> void:
+	_bind_scene_if_changed()
+	var audio := _node_from_scene_path(path)
+	if audio == null or not audio.has_method(&"play"):
+		return
+	audio.set(&"pitch_scale", pitch)
+	audio.set(&"volume_db", volume_db)
+	audio.call(&"play", offset)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _stop_sound(path: String) -> void:
+	_bind_scene_if_changed()
+	var audio := _node_from_scene_path(path)
+	if audio != null and audio.has_method(&"stop"):
+		audio.call(&"stop")
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -582,8 +747,24 @@ func _spawn_entity(
 	node_name: String = ""
 ) -> void:
 	_bind_scene_if_changed()
-	if _entities.has(id) or scene_path.is_empty():
+	if scene_path.is_empty():
 		return
+	var existing := _live_entity(id)
+	if existing == null and _entities.has(id):
+		# Freed locally without a despawn ever arriving. Drop the stale row here
+		# rather than letting the assignment below overwrite it, so the reverse
+		# lookup and the scene path go with it.
+		_remove_client_entity(id)
+	elif existing:
+		var same_scene := str(_entity_scene.get(id, "")) == scene_path
+		var same_name := node_name.is_empty() or str(existing.name) == node_name
+		if same_scene and same_name:
+			return
+		# An id must never change identity. Older builds could reset the server's
+		# id counter after spawning the ritual fire, leaving a client with a brazier
+		# under the id now assigned to a breach hunter. Replace that stale identity
+		# instead of letting the hunter's fast state animate the brazier.
+		_remove_client_entity(id)
 	var scene := load(scene_path) as PackedScene
 	if scene == null:
 		push_warning("WorldReplicator: cannot load replicated scene " + scene_path)
@@ -602,6 +783,9 @@ func _spawn_entity(
 		(node as RigidBody3D).freeze = true
 	parent.add_child(node)
 	_entities[id] = node
+	_entity_ids[node.get_instance_id()] = id
+	_entity_scene[id] = scene_path
+	_holders[id] = 0
 	var node_3d := node as Node3D
 	if node_3d:
 		node_3d.global_position = position
@@ -610,10 +794,19 @@ func _spawn_entity(
 
 @rpc("authority", "call_remote", "reliable")
 func _despawn_entity(id: int) -> void:
-	var node: Node = _entities.get(id)
-	_entities.erase(id)
-	if is_instance_valid(node):
+	_remove_client_entity(id)
+
+
+func _remove_client_entity(id: int) -> void:
+	var node := _live_entity(id)
+	if node:
+		_entity_ids.erase(node.get_instance_id())
 		node.queue_free()
+	else:
+		_forget_entity_instance(id)
+	_entities.erase(id)
+	_entity_scene.erase(id)
+	_holders.erase(id)
 
 
 ## Mirrors a pickup or a hand-over on the client, through the player's own
@@ -622,8 +815,8 @@ func _despawn_entity(id: int) -> void:
 ## and takes it off the floor on the peer that pressed the key.
 @rpc("authority", "call_remote", "reliable")
 func _set_entity_holder(id: int, peer_id: int) -> void:
-	var item := _entities.get(id) as Node3D
-	if not is_instance_valid(item):
+	var item := _live_entity(id) as Node3D
+	if item == null:
 		return
 	for node: Node in get_tree().get_nodes_in_group(&"players"):
 		if not node.has_method(&"release_held_item"):
@@ -648,17 +841,26 @@ func _player_for_peer(peer_id: int) -> Node:
 @rpc("authority", "call_remote", "reliable")
 func _apply_snapshot(snapshot: Dictionary) -> void:
 	_bind_scene_if_changed()
-	for row: Array in snapshot.get("entities", []):
+	var entity_rows: Array = snapshot.get("entities", [])
+	var snapshot_entity_ids: Dictionary = {}
+	for row: Array in entity_rows:
+		if not row.is_empty():
+			snapshot_entity_ids[int(row[0])] = true
+	for existing_id: Variant in _entities.keys():
+		if not snapshot_entity_ids.has(int(existing_id)):
+			_remove_client_entity(int(existing_id))
+	for row: Array in entity_rows:
 		if row.size() < 7:
 			continue
 		_spawn_entity(int(row[0]), str(row[1]), str(row[2]), row[3], row[4], str(row[6]))
 		if int(row[5]) != 0:
 			_set_entity_holder(int(row[0]), int(row[5]))
+		if row.size() >= 8 and row[7] is Array and not (row[7] as Array).is_empty():
+			var entity := _live_entity(int(row[0])) as Node3D
+			if entity and entity.is_in_group(&"hostile_ghosts"):
+				_apply_ghost(entity, row[7])
 	var ghosts: Array = snapshot.get("ghosts", [])
-	for index: int in mini(ghosts.size(), _ghosts.size()):
-		var state: Array = ghosts[index]
-		if state.size() >= 5:
-			_apply_ghost(_ghosts[index], state)
+	_apply_authored_ghosts(ghosts)
 	_apply_doors(snapshot.get("doors", []))
 	_apply_power(snapshot.get("power", []))
 	_apply_brazier(snapshot.get("brazier", []))

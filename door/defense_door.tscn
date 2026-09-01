@@ -212,14 +212,14 @@ position = Vector3(3, 0, -1.7)
 [node name="WarningAudio" type="AudioStreamPlayer3D" parent="."]
 position = Vector3(0, 1.25, 0)
 stream = ExtResource("2_scratch")
-volume_db = -8.0
-unit_size = 2.0
-max_distance = 11.0
-attenuation_model = 1
+volume_db = 0.0
+unit_size = 6.0
+max_distance = 34.0
+attenuation_model = 0
 
 [node name="StrongAttackAudio" type="AudioStreamPlayer3D" parent="."]
 position = Vector3(0, 1.25, 0)
-volume_db = 3.0
-unit_size = 2.8
-max_distance = 17.0
-attenuation_model = 1
+volume_db = 6.0
+unit_size = 8.0
+max_distance = 48.0
+attenuation_model = 0

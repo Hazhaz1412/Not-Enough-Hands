@@ -18,9 +18,29 @@ Godot 4.7 first-person horror prototype ("Not Enough Hands"). GDScript only, no 
 
   `tests/world_replication_pair_smoke.gd` and `tests/lobby_reset_pair_smoke.gd` span two processes: run normally each becomes the server, spawns a second headless copy of itself with `--client`, binds a UDP port (47311 / 47312) and asserts on the verdict the child writes to `user://`. Run them after touching anything in `network/` — a channel can be entirely dead without a single-process test noticing. `tests/villa_run_wipe_smoke.gd` covers the other end of a session (a wiped team handing the room back) and needs only one process, but does load the villa.
 
-## Core working rule (`.ai/RULES.md`)
+- **Budget the villa.** Anything that loads `house3/villa_main.tscn` bakes the navmesh with Recast at runtime and spends most of its wall clock there: **5–8 minutes each**, well past a default two-minute command timeout. Run those in the background or with an explicit long timeout, and don't read a timeout as a failure. House2 and bare-scene tests finish in seconds.
+
+- **Two tests already fail on a clean checkout**, so don't spend time thinking you broke them:
+  - `tests/hunter_slash_smoke.gd` was written against a Huntsman retune that never landed. Its first two sub-tests have since been corrected to the shipped contract (a `seize_clip_speed` property that never existed anywhere, and a 0.2 s commitment window against the real `seize_windup` of 0.5 s) and now pass. It still fails on the third, `_test_backpedal_cannot_escape_a_committed_grab`, which asserts a player holding the back key cannot walk out of a committed grab — arithmetically impossible with the shipped numbers: `seize_kill_radius` is 2.8 m and has always been, `Player.walk_speed` is 6 m/s and has always been, so 0.5 s of wind-up carries a walking player 3.1 m from a 2.3 m start to 5.4 m. It fails at a 0.2 s wind-up too, so no retune ever made it pass. Closing it is a **balance** decision (kill radius, wind-up, or player speed), not a test fix — don't quietly invert the assertion.
+  - `tests/villa_boot_smoke.gd` fails on absent art: `.gitignore` excludes `/assets/map/**`, so the furniture and texture packs the villa generates from are not in the repo. It surfaces as `... has 0 Mirror fixture(s), expected exactly one` because `assets/map/Furniture/FBX/Separated/Mirror.fbx` cannot load. It is an asset-availability failure, not a villa geometry bug — do not "fix" it by editing the layout.
+
+### When something "does nothing", suspect loading before logic
+
+Godot fails soft here in a way that looks exactly like a gameplay bug, and it has cost real time twice:
+
+- A `.tscn` whose `ext_resource` path does not resolve (a missing asset, or one that is gitignored and only exists on one machine) fails to parse **the whole scene**. Instancing it elsewhere leaves a node that exists but is inert.
+- A GDScript parse error does the same to one node: the scene still loads, the node is still there, but it has **no script** — so every property reads as `<null>`, every method is missing, and nothing it owns ever runs.
+
+In both cases the game keeps running and the only evidence is in the editor/stdout output. **Read the console before reading the AI code**: `godot --headless --script tests/<name>.gd 2>&1 | grep -i "parse error\|not found"` settles it in seconds. See also the release-build warning under *Multiplayer* — a different silent-failure class with the same symptom.
+
+## Core working rule (inlined below; `.ai/RULES.md` itself is gitignored)
 
 Write less, do less, change only what's required: smallest implementation that satisfies the requirement, reuse existing architecture/groups before adding new ones, don't touch unrelated systems, every change needs a reason and a verification step. Priority order: Correctness > Simplicity > Maintainability > Completeness > Extra features.
+
+`.gitignore` excludes `.ai/` wholesale, so nothing in it is in the repo — the rule above is reproduced here because a fresh clone has no copy of it. Two other things live there locally, and neither is authoritative:
+
+- `.ai/CONTEXT.md` is **stale**: it documents only the early prototype (player controller, stamina, a door) and predates the ghosts, both maps and the whole network layer. Do not use it to orient yourself; this file and `README.md` are current.
+- `.ai/godot-*/SKILL.md` are ~30 general Godot reference packs written around **GdUnit4**. This repository does not use GdUnit and must not gain it — see *Running & testing* above for what the tests actually are. Treat those packs as engine reference only, never as this project's conventions.
 
 ## Architecture
 
@@ -48,10 +68,17 @@ Each ghost is built to counter a different player behavior, and each subscribes 
 | | Statue | Crawler | Huntsman |
 |---|---|---|---|
 | Script | `statue_ghost.gd` | `crawler_ghost.gd` | `hunter_ghost.gd` |
-| Sense | sight (freezes if seen) | sound (blind) | scent trail on the floor |
+| Sense | sight (freezes if seen) | sound (blind) | line of sight from any angle, plus hearing |
 | Entry | scripted ambush | announced fly-past + patrol/hunt/retreat cycle | via a door's `breached` signal, walks in on foot |
 
-`hunter_ghost.gd` subscribes to every defense door's `breached` signal — a door reaching zero durability is what lets it in; rebuilding the door before its entry delay elapses keeps it out entirely. See `README.md` for the full behavioral contract of each (this is the design spec, not just flavor text — the smoke tests in `tests/` assert these specifics).
+The Huntsman deliberately has **no** scent/footprint memory: it investigates only
+direct evidence (a heard noise, the last place it saw somebody) and otherwise
+patrols the `hunter_sweep_points` route. `tests/hunter_ghost_smoke.gd` asserts
+that negatively - a `get_trail_size()`/`has_trail_lead()` hook on the hunter is a
+test failure. Restoring a trail system means changing that test first, not
+half-reintroducing the call sites.
+
+`hunter_ghost.gd` subscribes to every defense door's `breached` signal — a door reaching zero durability is what lets it in, and it answers on the next physics tick — `entry_delay_min`/`entry_delay_max` ship at 0, so there is no longer a grace period in which rebuilding the door keeps it out. Raising either export restores that window; `tests/hunter_ghost_smoke.gd` covers both the zero-delay arrival and the sealed-out behaviour a non-zero delay still gives. See `README.md` for the full behavioral contract of each (this is the design spec, not just flavor text — the smoke tests in `tests/` assert these specifics).
 
 ### Doors, power, and the flashlight minigame
 
@@ -90,7 +117,7 @@ counterpart to `try_pick_up_item()`; nothing reaches into the equipment slots.
 
 ### Player & threat reporting
 
-`player/player.gd` owns movement, camera, stamina, and blink. All three ghosts report danger through `Player.set_threat_from(...)`, which the horror overlay (`ui/`) uses to always reflect whichever threat is currently worse — new ghosts/hazards should report through this same call rather than driving the overlay directly.
+`player/player.gd` owns movement, camera, and stamina. All three ghosts report danger through `Player.set_threat_from(...)`, which the horror overlay (`ui/`) uses to always reflect whichever threat is currently worse — new ghosts/hazards should report through this same call rather than driving the overlay directly.
 
 ### Multiplayer: one authority, three kinds of seam
 
@@ -103,6 +130,10 @@ Every world system guards its own simulation with `WorldNet.is_world_authority()
 - **Presses whose whole effect is local geometry.** Interior doors and light switches join `replicated_interactions`, and `Player._try_interact()` echoes the press to every peer. Targets with their own network path deliberately stay out of that group.
 
 A run ends exactly one way: `NetworkManager.end_run()`, which clears `game_started` and the ready flags and returns everyone to the lobby. `villa_main.gd` decides *when* (wipe, dawn, or the last player leaving); NetworkManager decides what to do about it.
+
+**An RPC can land on a node that has already left the tree.** Ending a run swaps the villa for the lobby, and for the frame or two that takes, every peer is still streaming input — none of them has heard yet. Those packets arrive at a body being freed with the map, where `Node.multiplayer` and `get_tree()` are both **null**, so a guard opening with `multiplayer.is_server()` is the crash rather than the check. Every RPC entry point on a node that lives *inside a map scene* (`player/player.gd`, `power/main_breaker.gd` — the `network/` ones are autoloads and always in the tree) must therefore open with `Player._network_is_reachable()` or its equivalent; `tests/detached_player_rpc_smoke.gd` pins it.
+
+Beware that **a debug build hides this entire class of bug**: it reports "Cannot call method 'x' on a null value" and carries on, so every headless smoke test passes, while the exported server dereferences null and dies with SIGSEGV (exit 139). When a bug reproduces only on Edgegap, export a release build and run it locally before reading any more code — `--script` does not work in an exported binary, so drive it as a real `--server` + `--join=` pair instead.
 
 ### Dev tools
 

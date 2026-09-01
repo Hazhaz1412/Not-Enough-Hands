@@ -15,8 +15,9 @@ func _run() -> void:
 	var region := main_scene.get_node("HouseNavigationRegion") as NavigationRegion3D
 	var map_rid := region.get_navigation_map()
 
-	player.set("automatic_blink_enabled", false)
-	player.call("force_blink", 20.0)
+	# The statue only moves unobserved; a zero observation cone is how this
+	# fixture keeps it moving now that a forced blink no longer exists.
+	statue.set("observation_half_angle", 0.0)
 	statue.set("intermittent_hunts_enabled", false)
 	# Put the target just inside the upper landing and the statue at the foot
 	# of the ground-floor staircase. Character origins differ: the player's

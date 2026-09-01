@@ -764,6 +764,7 @@ func _add_street_lamp(parent: Node3D, at: Vector2, lit: bool, failing: bool) -> 
 	light.spot_angle = 58.0
 	light.spot_angle_attenuation = 1.4
 	light.shadow_enabled = false
+	light.add_to_group(&"local_light_sources")
 	parent.add_child(light)
 	if failing:
 		_flicker_lights.append(light)
@@ -909,6 +910,7 @@ func _add_gate(parent: Node3D) -> void:
 		lamp.light_volumetric_fog_energy = 1.2
 		lamp.omni_range = 9.0
 		lamp.shadow_enabled = false
+		lamp.add_to_group(&"local_light_sources")
 		parent.add_child(lamp)
 
 	# One leaf stands half open and the other is jammed nearly shut, the way an
@@ -1023,6 +1025,7 @@ func _add_wall_lantern(parent: Node3D, at: Vector3) -> void:
 	light.light_volumetric_fog_energy = 1.0
 	light.omni_range = 6.5
 	light.shadow_enabled = false
+	light.add_to_group(&"local_light_sources")
 	parent.add_child(light)
 
 

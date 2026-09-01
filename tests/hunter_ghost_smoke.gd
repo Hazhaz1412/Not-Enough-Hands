@@ -1,8 +1,8 @@
 extends SceneTree
 
 ## Covers the things that define the huntsman and would silently rot: it only
-## gets in through a breached door, it follows the trail a player leaves on the
-## floor, it hears a player who is upright but not one who is crouched, it locks
+## gets in through a breached door, it patrols without reading player footprints,
+## it hears a player who is upright but not one who is crouched, it locks
 ## on the instant it sees you and its grab kills, losing you makes it walk away
 ## rather than straight back onto you, sealing the last breach traps it inside -
 ## and once it is in, it never leaves.
@@ -34,11 +34,13 @@ func _run() -> void:
 
 	if not await _test_enters_through_a_breach():
 		return
+	if not await _test_breach_manifests_immediately():
+		return
 	if not await _test_sealing_before_arrival_keeps_it_out():
 		return
-	if not await _test_follows_the_trail():
+	if not await _test_patrols_without_player_history():
 		return
-	if not await _test_unreachable_mark_does_not_freeze_it():
+	if not await _test_unreachable_noise_does_not_freeze_it():
 		return
 	if not await _test_sight_lock_and_seize():
 		return
@@ -54,8 +56,8 @@ func _run() -> void:
 		return
 
 	print(
-		'Hunter ghost smoke test passed: breach entry, sealed-out, trail following, '
-		+ 'unreachable-mark recovery, sight lock and seize, chase override, '
+		'Hunter ghost smoke test passed: breach entry, sealed-out, route patrol, '
+		+ 'no footprint memory, unreachable-noise recovery, sight lock and seize, '
 		+ 'five-second sight memory, fair-play disengage, attack safety, sealed-in, '
 		+ 'never leaves, hearing.'
 	)
@@ -112,10 +114,17 @@ func _add_door() -> Node3D:
 	return door
 
 
-func _spawn_hunter(at: Vector3, overrides: Dictionary = {}) -> CharacterBody3D:
+func _spawn_hunter(
+	at: Vector3,
+	overrides: Dictionary = {},
+	keep_entry_delay: bool = false
+) -> CharacterBody3D:
 	var hunter := hunter_scene.instantiate() as CharacterBody3D
-	hunter.set('entry_delay_min', 0.4)
-	hunter.set('entry_delay_max', 0.4)
+	# Most tests only want to reach the arrival quickly. The one that measures
+	# the gap between the breach and the body has to see the shipped value.
+	if not keep_entry_delay:
+		hunter.set('entry_delay_min', 0.4)
+		hunter.set('entry_delay_max', 0.4)
 	for key: String in overrides:
 		hunter.set(key, overrides[key])
 	root.add_child(hunter)
@@ -129,7 +138,6 @@ func _spawn_hunter(at: Vector3, overrides: Dictionary = {}) -> CharacterBody3D:
 
 func _spawn_player(at: Vector3) -> CharacterBody3D:
 	var player := (load('res://player/player.tscn') as PackedScene).instantiate() as CharacterBody3D
-	player.set('automatic_blink_enabled', false)
 	root.add_child(player)
 	player.global_position = at
 	return player
@@ -206,6 +214,51 @@ func _test_enters_through_a_breach() -> bool:
 	return true
 
 
+## The breach *is* the announcement. Nothing may sit between a door reaching
+## zero and the huntsman being on its feet at the hole, so this measures the gap
+## in physics frames with the shipped delays rather than a test's own.
+func _test_breach_manifests_immediately() -> bool:
+	var markers := _add_sweep_markers()
+	var door := _add_door()
+	var hunter := await _spawn_hunter(Vector3(0.0, 0.15, 20.0), {}, true)
+
+	# A lambda captures locals by value, so the frame has to come back in
+	# something the callback can actually mutate.
+	var breached_frame: Array[int] = [-1]
+	door.breached.connect(func(_door: Node) -> void:
+		breached_frame[0] = Engine.get_physics_frames()
+	)
+	door.call('take_damage', 999.0, true)
+	if breached_frame[0] < 0:
+		return _fail('The door did not emit breached when it reached zero.', hunter)
+
+	var manifested_frame := -1
+	for _step: int in 30:
+		await physics_frame
+		if bool(hunter.get('manifested')):
+			manifested_frame = Engine.get_physics_frames()
+			break
+	if manifested_frame < 0:
+		return _fail('The huntsman never manifested after the breach.', hunter)
+
+	# _update_dormant() runs on the tick after the signal and there is nothing
+	# else in between, so one frame is the whole budget. Anything larger means a
+	# waiting period has come back.
+	var waited := manifested_frame - breached_frame[0]
+	if waited > 2:
+		return _fail(
+			'The huntsman waited %d physics frames after the breach.' % waited,
+			hunter
+		)
+	if int(hunter.get('state')) != HunterState_ENTERING:
+		return _fail('The huntsman manifested without beginning its entry.', hunter)
+
+	await _despawn(hunter)
+	await _despawn(door)
+	await _despawn_all(markers)
+	return true
+
+
 ## Rebuilding the door inside the entry delay is the whole reward for repairing
 ## fast: nothing ever comes in.
 func _test_sealing_before_arrival_keeps_it_out() -> bool:
@@ -233,11 +286,10 @@ func _test_sealing_before_arrival_keeps_it_out() -> bool:
 	return true
 
 
-## The signature behaviour: it is given no noise, no sight and no target, only
-## the marks a player left walking across the floor, and it has to follow them.
-func _test_follows_the_trail() -> bool:
+## With sight and hearing disabled, moving a player around must leave no hidden
+## history for the hunter to consume. It still has to patrol its authored route.
+func _test_patrols_without_player_history() -> bool:
 	var markers := _add_sweep_markers()
-	# Sight off, so nothing here can be explained by it seeing them.
 	var hunter := await _spawn_hunter(
 		Vector3(0.0, 0.15, 0.0),
 		{
@@ -245,41 +297,24 @@ func _test_follows_the_trail() -> bool:
 			'sight_range': 0.0,
 			'cast_duration': 0.2,
 			'hearing_range': 0.0,
+			'walk_speed': 3.0,
 		}
 	)
-	var player := _spawn_player(Vector3(1.5, 0.9, 0.0))
+	var player := _spawn_player(Vector3(12.0, 0.9, 0.0))
 	await physics_frame
 
 	hunter.call('dev_force_spawn', null)
-	var start_x: float = hunter.global_position.x
-	# Lay a trail out along +x by walking the player away one step at a time. The
-	# huntsman is already following it while the trail is still being laid, which
-	# is exactly the intended behaviour, so travel is measured from here.
-	for step: int in 18:
-		player.global_position = Vector3(1.5 + step * 0.55, 0.9, 0.0)
+	if hunter.has_method('get_trail_size') or hunter.has_method('has_trail_lead'):
+		return _fail('Footprint tracking hooks still exist on the hunter.', hunter)
+	var visited: Dictionary = {}
+	for step: int in 30:
+		player.global_position = Vector3(12.0 + step * 0.2, 0.9, 8.0)
 		await create_timer(0.2).timeout
-
-	if hunter.call('get_trail_size') <= 0:
-		return _fail('No trail was recorded for a player walking around the house.', hunter)
-	if not hunter.call('has_trail_lead') \
-		and hunter.global_position.distance_to(player.global_position) > 3.5:
-		return _fail('Huntsman neither held the fresh trail nor already reached its owner.', hunter)
-
-	await create_timer(6.0).timeout
-	var travelled: float = hunter.global_position.x - start_x
-
-	if travelled < 5.0:
-		return _fail(
-			'Huntsman did not follow the trail: moved %.2f m along it.' % travelled,
-			hunter
-		)
-	# Following the marks has to actually deliver it to whoever left them.
-	var reached: float = hunter.global_position.distance_to(player.global_position)
-	if reached > 3.5:
-		return _fail(
-			'Huntsman followed the trail but never closed on the player (%.2f m away).' % reached,
-			hunter
-		)
+		for marker: Node3D in markers:
+			if hunter.global_position.distance_to(marker.global_position) <= 2.5:
+				visited[marker.name] = true
+	if visited.size() < 2:
+		return _fail('Huntsman did not roam between patrol points without footprints.', hunter)
 
 	await _despawn(hunter)
 	await _despawn(player)
@@ -287,51 +322,32 @@ func _test_follows_the_trail() -> bool:
 	return true
 
 
-## The failure this creature is most prone to: a mark it can smell but cannot
-## walk to - one left above its head, or behind a wall it has no way through -
-## used to fixate it forever, and the whole hunt ended with it standing in place.
-## It has to notice it is getting nowhere, drop that mark, and carry on hunting.
-func _test_unreachable_mark_does_not_freeze_it() -> bool:
+## A one-shot sound can still be unreachable. It must drop that investigation and
+## resume patrol instead of staring at the destination forever.
+func _test_unreachable_noise_does_not_freeze_it() -> bool:
 	var markers := _add_sweep_markers()
 	var hunter := await _spawn_hunter(
 		Vector3(0.0, 0.15, 0.0),
 		{
 			'entry_enabled': false,
 			'sight_range': 0.0,
-			# This isolated test deliberately makes the impossible airborne mark
-			# readable. Normal gameplay keeps the close nose to the current floor.
-			'nose_height_range': 5.0,
 			'cast_duration': 0.2,
 			'stuck_release_time': 1.0,
-			'trail_point_timeout': 3.0,
 		}
 	)
-	# Standing on nothing, four metres up: readable, and completely unreachable.
-	var player := _spawn_player(Vector3(0.0, 4.0, 3.0))
-	player.set_physics_process(false)
-	await physics_frame
-
 	hunter.call('dev_force_spawn', null)
-	await create_timer(1.5).timeout
-	if not hunter.call('has_trail_lead'):
-		return _fail('Huntsman could not smell the marks it is supposed to fixate on.', hunter)
+	hunter.call('report_noise', Vector3(0.0, 4.0, 3.0), 1.0, null)
+	await create_timer(0.5).timeout
+	if not bool(hunter.get('_has_noise_lead')):
+		return _fail('Huntsman did not investigate a direct nearby sound.', hunter)
 
-	# Long enough that a fixated huntsman would still be standing under them.
-	await create_timer(8.0).timeout
-
-	if int(hunter.get('state')) == HunterState_TRACKING and hunter.call('has_trail_lead'):
-		return _fail(
-			'Huntsman is still reading a mark it has had eight seconds to fail to reach.',
-			hunter
-		)
-	if hunter.global_position.distance_to(Vector3(0.0, 0.15, 0.0)) < 1.0:
-		return _fail(
-			'Huntsman never moved off the spot under an unreachable mark.',
-			hunter
-		)
+	await create_timer(5.0).timeout
+	if bool(hunter.get('_has_noise_lead')):
+		return _fail('Huntsman is still fixated on an unreachable sound.', hunter)
+	if int(hunter.get('state')) == HunterState_TRACKING:
+		return _fail('Huntsman did not return to its patrol state after dropping the sound.', hunter)
 
 	await _despawn(hunter)
-	await _despawn(player)
 	await _despawn_all(markers)
 	return true
 
@@ -366,10 +382,11 @@ func _test_sight_lock_and_seize() -> bool:
 
 	# Held for the full roar: the warning is the head start, so a roar that ends
 	# early is the difference between escapable and not.
-	await create_timer(2.0).timeout
+	var roar_duration := float(hunter.get('roar_duration'))
+	await create_timer(maxf(roar_duration - 0.5, 0.05)).timeout
 	if int(hunter.get('state')) != HunterState_ROARING:
 		return _fail('Huntsman cut its roar short and started moving early.', hunter)
-	await create_timer(0.9).timeout
+	await create_timer(0.7).timeout
 	if int(hunter.get('state')) != HunterState_LOCKED:
 		return _fail('Huntsman never came out of its roar into the charge.', hunter)
 
@@ -440,8 +457,8 @@ func _test_chase_override_and_five_second_memory() -> bool:
 	# pace is slower than a walking player: while it has not seen you, it is
 	# beatable on foot.
 	var patrol_speed := float(hunter.call('_non_chase_speed', float(hunter.get('walk_speed'))))
-	if not is_equal_approx(patrol_speed, 2.0):
-		return _fail('Patrol pace is not 2 m/s (%.2f).' % patrol_speed, hunter)
+	if not is_equal_approx(patrol_speed, 2.5):
+		return _fail('Patrol pace is not 2.5 m/s (%.2f).' % patrol_speed, hunter)
 
 	await _despawn(blocker)
 	await _despawn(hunter)

@@ -5,10 +5,15 @@ signal attack_wave_started(targets: Array[Node])
 
 @export_range(1, 3, 1) var minimum_targets: int = 1
 @export_range(1, 3, 1) var maximum_targets: int = 3
-@export_range(0.0, 1.0, 0.01) var false_alarm_chance: float = 0.3
+@export_range(0.0, 1.0, 0.01) var false_alarm_chance: float = 0.2
 @export var automatic_waves: bool = false
-@export var wave_delay_min: float = 18.0
-@export var wave_delay_max: float = 32.0
+@export var wave_delay_min: float = 9.0
+@export var wave_delay_max: float = 16.0
+## How much harder a wave leans on an entrance that is already losing. A
+## pristine door weighs 1; one on its last points weighs this. It is a bias and
+## not a rule on purpose - the strongest door is never safe, it is only rarer -
+## so a team cannot leave six entrances unwatched by sacrificing the seventh.
+@export_range(1.0, 32.0, 0.5) var weak_door_focus: float = 8.0
 
 var _wave_timer: float = 0.0
 var _rng := RandomNumberGenerator.new()
@@ -56,15 +61,16 @@ func start_attack_wave(requested_count: int = -1) -> Array[Node]:
 	if candidates.is_empty() or available_slots == 0:
 		return []
 
-	_shuffle(candidates)
 	var target_count := requested_count
 	if target_count < 0:
 		target_count = _rng.randi_range(minimum_targets, maximum_targets)
 	target_count = clampi(target_count, 1, mini(available_slots, candidates.size()))
 
 	var selected: Array[Node] = []
-	for index: int in target_count:
-		var door := candidates[index]
+	for _index: int in target_count:
+		var door := _take_weighted(candidates)
+		if not door:
+			break
 		var will_attack := _rng.randf() >= false_alarm_chance
 		if door.call("begin_targeting", will_attack):
 			selected.append(door)
@@ -107,9 +113,35 @@ func _schedule_next_wave() -> void:
 	_wave_timer = _rng.randf_range(wave_delay_min, wave_delay_max)
 
 
-func _shuffle(items: Array[Node]) -> void:
-	for index: int in range(items.size() - 1, 0, -1):
-		var swap_index := _rng.randi_range(0, index)
-		var temporary := items[index]
-		items[index] = items[swap_index]
-		items[swap_index] = temporary
+## Draws one door out of `items`, favouring the ones already close to breaking,
+## and removes it so the same door is never picked twice in one wave.
+func _take_weighted(items: Array[Node]) -> Node:
+	if items.is_empty():
+		return null
+	var weights: Array[float] = []
+	var total := 0.0
+	for door: Node in items:
+		var weight := _door_weight(door)
+		weights.append(weight)
+		total += weight
+	var roll := _rng.randf() * total
+	for index: int in items.size():
+		roll -= weights[index]
+		if roll <= 0.0:
+			return items.pop_at(index)
+	return items.pop_back()
+
+
+## 1 for a door in the best condition it can currently be in, `weak_door_focus`
+## for one about to fall.
+##
+## Measured against `repair_cap` rather than `max_durability` because the cap is
+## what a fully repaired door actually reaches - every hit lowers it for good, so
+## dividing by the original maximum would score a door the players have already
+## restored as far as it will go as though it were still damaged, and the bias
+## would compound onto whichever entrance was unlucky first. The cap is the
+## current ceiling; how close the door is to zero *within* that is its condition.
+func _door_weight(door: Node) -> float:
+	var ceiling := maxf(float(door.get("repair_cap")), 0.01)
+	var ratio := clampf(float(door.get("current_durability")) / ceiling, 0.0, 1.0)
+	return lerpf(weak_door_focus, 1.0, ratio)

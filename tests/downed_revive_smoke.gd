@@ -4,7 +4,9 @@ extends SceneTree
 ## teammate still standing puts a player on the floor instead of ending their
 ## run, ghosts stop targeting them there, the bleed-out clock pauses for the
 ## whole ten-second rescue, and the 180-second budget - charged 60 per death -
-## is what eventually turns them into a spectator.
+## is what eventually turns them into a spectator. Being caught is still a
+## scare on the way down: the jumpscare plays for every catch, and only a catch
+## with nobody left to rescue puts the death screen behind it.
 
 ## Loaded at run time, never preloaded: preload resolves while this script is
 ## compiled, which is before the NetworkManager autoload exists, and player.gd
@@ -89,7 +91,17 @@ func _expect_downed_after_kill(label: String) -> bool:
 		_fail("A downed player must not still count as alive.")
 		return false
 	if downed.get_node("DeathUI").visible:
-		_fail("The death jumpscare must not run while a rescue is still possible.")
+		_fail("The death screen must not run while a rescue is still possible.")
+		return false
+	var scare := downed.get_node("Jumpscare") as JumpscareController
+	if not scare.is_playing():
+		_fail("The %s catch played no jumpscare on the way down." % label)
+		return false
+	# Cleared here rather than left to run out, so the next catch is asked to
+	# start its own scare instead of inheriting this one still playing.
+	scare.cancel()
+	if downed.get_node("DeathUI").visible:
+		_fail("A downed player's jumpscare must not raise a Game Over behind it.")
 		return false
 	if not is_equal_approx(downed.downed_time_remaining, expected_remaining):
 		_fail(

@@ -340,7 +340,7 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# --- The catch resolves: stutter, vanish, forced blink, re-arm. ---
+	# --- The catch resolves: stutter, vanish, re-arm. ---
 	var seen_count := [0]
 	ghost.ghost_seen.connect(func(): seen_count[0] += 1)
 	var guard := 0
@@ -349,10 +349,6 @@ func _run() -> void:
 		guard += 1
 	if ghost.phase != ghost.GhostPhase.DISAPPEARING:
 		push_error("The stutter did not resolve into DISAPPEARING (phase=%d)." % ghost.phase)
-		quit(1)
-		return
-	if player.forced_blink_remaining <= 0.0:
-		push_error("Catching the ghost did not force the player's blink.")
 		quit(1)
 		return
 	while ghost.phase == ghost.GhostPhase.DISAPPEARING and guard < 800:
@@ -370,10 +366,6 @@ func _run() -> void:
 		push_error("Respawn delay %.2fs is outside the configured %.1f-%.1fs window." % [
 			ghost._spawn_timer, ghost.min_respawn_delay, ghost.max_respawn_delay
 		])
-		quit(1)
-		return
-	if player.forced_blink_remaining > 0.0:
-		push_error("The forced blink was never ended - the player's eyes are stranded shut.")
 		quit(1)
 		return
 	if player.threat_sources.has(ghost.THREAT_SOURCE):
@@ -546,29 +538,24 @@ func _run() -> void:
 		return
 	ghost.reset()
 
-	# --- Cleanup: reset() is unconditional, from any phase. The mid-blink case
-	# is the critical one - force_blink_now() has fired and nothing else is
-	# left to reopen the eyes once the ghost stops being driven. ---
+	# --- Cleanup: reset() is unconditional, from any phase, including the
+	# vanish beat between a catch and the next spawn. ---
 	ghost.initial_spawn_delay = 0.0
 	ghost.arm()
 	ghost.update(0.01, player, camera)
 	ghost.spot_count = ghost.spots_to_banish - 1
 	_watch_for(ghost, player, camera, 1)
-	var to_blink := 0
-	while ghost.phase != ghost.GhostPhase.DISAPPEARING and to_blink < 400:
+	var to_vanish := 0
+	while ghost.phase != ghost.GhostPhase.DISAPPEARING and to_vanish < 400:
 		ghost.update(STEP_DELTA, player, camera)
-		to_blink += 1
+		to_vanish += 1
 	if ghost.phase != ghost.GhostPhase.DISAPPEARING:
-		push_error("Could not drive the ghost into DISAPPEARING for the mid-blink cleanup case.")
+		push_error("Could not drive the ghost into DISAPPEARING for the cleanup case.")
 		quit(1)
 		return
 	ghost.reset()
 	if ghost.phase != ghost.GhostPhase.IDLE:
 		push_error("reset() left the ghost in phase %d." % ghost.phase)
-		quit(1)
-		return
-	if player.forced_blink_remaining > 0.0:
-		push_error("Exiting mid-blink stranded the player's eyes shut.")
 		quit(1)
 		return
 	if player.threat_sources.has(ghost.THREAT_SOURCE):

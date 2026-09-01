@@ -100,12 +100,12 @@ func _process(delta: float) -> void:
 	if not enable_power_drain:
 		return
 
-	var total_load := get_total_load()
+	var total_load := _total_load
 
 	if total_load <= 0.0:
 		return
 
-	current_power -= get_drain_per_second() * delta
+	current_power -= _calculate_drain(total_load) * delta
 	current_power = clamp(current_power, 0.0, max_power)
 
 	if current_power <= 0.0:
@@ -140,7 +140,6 @@ func unregister_device(device: Node) -> void:
 
 
 func get_total_load() -> float:
-	_refresh_total_load()
 	return _total_load
 
 
@@ -150,8 +149,10 @@ func get_total_load() -> float:
 ## can register late (the villa builds its lights at runtime), which is why the
 ## reference is tracked as a running peak rather than sampled once.
 func get_drain_per_second() -> float:
-	var total_load := get_total_load()
-	_reference_load = maxf(_reference_load, total_load)
+	return _calculate_drain(_total_load)
+
+
+func _calculate_drain(total_load: float) -> float:
 	if full_load_reserve_seconds <= 0.0 or _reference_load <= 0.0:
 		return total_load
 	return max_power / full_load_reserve_seconds * (total_load / _reference_load)
@@ -192,6 +193,7 @@ func _refresh_total_load() -> void:
 		valid_devices.append(device)
 		updated_load += maxf(float(device.get_power_consumption()), 0.0)
 	devices = valid_devices
+	_reference_load = maxf(_reference_load, updated_load)
 	if is_equal_approx(_total_load, updated_load):
 		return
 	_total_load = updated_load

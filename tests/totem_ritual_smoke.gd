@@ -33,7 +33,7 @@ func _run() -> void:
 
 	print(
 		"Totem ritual smoke test passed: 4:00 AM ceiling, two-handed totem, "
-		+ "burn/relight loop, wall-blocked highlight, far-away restocking, and "
+		+ "burn/relight loop, wall-blocked highlight, four random totems, and "
 		+ "end-of-ritual cleanup."
 	)
 	quit()
@@ -80,10 +80,12 @@ func _build_world() -> bool:
 	_root.add_child(_brazier)
 
 	_ritual = TotemRitual.new()
-	# Restocking needs a map full of room markers. The burn-loop checks below
-	# hand every item in by name instead, so this director keeps no population of
-	# its own - _check_spawn_rules() covers restocking on its own little stage.
-	_ritual.items_per_player = 0
+	# Restocking needs a map full of room markers. The burn-loop checks below hand
+	# every item in by name, so this director cannot create its own population;
+	# keeping the normal target also prevents its deferred burn restock from
+	# treating the next test's manually created totem as surplus.
+	_ritual.totems_in_world = 4
+	_ritual.firewood_in_world = 0
 	_root.add_child(_ritual)
 	await _ritual.begin()
 	_ritual.set_process(false)
@@ -219,8 +221,15 @@ func _check_spawn_rules() -> bool:
 	stage.add_child(director)
 	await director.begin()
 
-	if get_nodes_in_group(&"totems").size() != 1 or get_nodes_in_group(&"fire_fuel").size() != 1:
-		return _fail("One player in the run should be worth one totem and one log.")
+	if get_nodes_in_group(&"totems").size() != 4:
+		return _fail("The map should hold exactly four totems with one player.")
+	# Logs are a flat population, not one per player: the fire needs one after
+	# every burn, so the map always carries a handful of them.
+	if get_nodes_in_group(&"fire_fuel").size() != director.firewood_in_world:
+		return _fail(
+			"The map should always carry %d logs, found %d."
+			% [director.firewood_in_world, get_nodes_in_group(&"fire_fuel").size()]
+		)
 	for item: Node in get_nodes_in_group(&"totems") + get_nodes_in_group(&"fire_fuel"):
 		var spawned := item as Node3D
 		if spawned.global_position.distance_to(first.global_position) < 70.0:
@@ -228,15 +237,15 @@ func _check_spawn_rules() -> bool:
 
 	var second := _fake_player(stage, Vector3(0, 0, 4))
 	director.restock()
-	if get_nodes_in_group(&"totems").size() != 2:
-		return _fail("A second player in the run should put a second totem on the map.")
+	if get_nodes_in_group(&"totems").size() != 4:
+		return _fail("Adding a player changed the fixed four-totem population.")
 
 	second.queue_free()
 	await process_frame
 	director.restock()
 	await process_frame
-	if get_nodes_in_group(&"totems").size() != 1:
-		return _fail("Losing a player should take the surplus totem back off the map.")
+	if get_nodes_in_group(&"totems").size() != 4:
+		return _fail("Losing a player changed the fixed four-totem population.")
 
 	# Nothing on this stage is 500 m from anybody, so the rule has to fall back
 	# to the farthest room there is rather than give up or drop it underfoot.
@@ -245,10 +254,31 @@ func _check_spawn_rules() -> bool:
 		item.free()
 	director.restock()
 	var totems := get_nodes_in_group(&"totems")
-	if totems.size() != 1:
+	if totems.size() != 4:
 		return _fail("An impossible distance rule must still restock, not stall.")
-	if (totems[0] as Node3D).global_position.distance_to(far_room.global_position) > 3.0:
-		return _fail("With no room 500 m away the farthest room should have been used.")
+	for node: Node in totems:
+		if (node as Node3D).global_position.distance_to(far_room.global_position) > 3.0:
+			return _fail("With no room 500 m away the farthest room should have been used.")
+
+	# Burning one queues it out of the world and asks the authority to replace it.
+	# The count returns to four without waiting for the periodic restock timer.
+	var old_ids: Array[int] = []
+	for node: Node in totems:
+		old_ids.append(node.get_instance_id())
+	(totems[0] as Node).queue_free()
+	director.on_totem_burned()
+	await process_frame
+	await process_frame
+	var replacements := get_nodes_in_group(&"totems")
+	if replacements.size() != 4:
+		return _fail("Burning one totem did not immediately restore the population to four.")
+	var found_new := false
+	for node: Node in replacements:
+		if not old_ids.has(node.get_instance_id()):
+			found_new = true
+			break
+	if not found_new:
+		return _fail("Totem restock did not create a new random replacement instance.")
 
 	stage.free()
 	await process_frame

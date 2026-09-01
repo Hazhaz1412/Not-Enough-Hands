@@ -54,7 +54,8 @@ signal ghost_timed_out
 ## HOLDING and MOVING are the two halves of the lurch cycle the whole design
 ## turns on - which one the ghost is in when it is seen decides what that
 ## sighting is worth. STUTTER is the caught-in-the-act beat before it
-## actually vanishes; DISAPPEARING is the forced blink after that.
+## actually vanishes; DISAPPEARING is the short beat it stays gone for after
+## that, before the loop re-arms.
 enum GhostPhase { IDLE, WAITING, HOLDING, MOVING, STUTTER, DISAPPEARING }
 
 ## The rear-left and rear-right arcs are each sliced into two zones. A spawn
@@ -77,6 +78,8 @@ const FLOOR_PROBE_DOWN := 3.0
 ## without this file touching the overlay, and what lets a crawler in the
 ## hallway still out-dread a ghost that has only just appeared.
 const THREAT_SOURCE := &"toilet_ghost"
+## How long the ghost stays gone after a catch before the spawn loop re-arms.
+const VANISH_BEAT_SECONDS := 0.22
 
 @export_category("Spawn Timing")
 ## The first Ghost of a session always appears at exactly this many seconds
@@ -227,7 +230,7 @@ var _move_to: float = 0.0
 ## re-arm the tally - see _update_moving().
 var _move_is_punishment: bool = false
 var _stutter_timer: float = 0.0
-var _blink_timer: float = 0.0
+var _vanish_timer: float = 0.0
 var _active_player: Node3D
 var _rng := RandomNumberGenerator.new()
 ## Direction of the previous spawn, so the next one can be kept away from
@@ -283,7 +286,7 @@ func _ready() -> void:
 
 ## Called by ToiletMinigame.start_session() - arms the fixed, non-random wait
 ## before the FIRST ghost of the session may spawn. Repeat spawns after that
-## go through _arm_respawn() instead (see _finish_blink()).
+## go through _arm_respawn() instead (see _finish_vanish()).
 func arm(
 		starting_advance: float = 0.0,
 		spawn_immediately: bool = false
@@ -325,7 +328,7 @@ func _clear_transient_state() -> void:
 	_move_to = 0.0
 	_move_is_punishment = false
 	_stutter_timer = 0.0
-	_blink_timer = 0.0
+	_vanish_timer = 0.0
 	_expressed_advance = 0.0
 	_active_player = null
 	visual.visible = false
@@ -348,9 +351,9 @@ func update(delta: float, player: Node3D, camera: Camera3D) -> void:
 		GhostPhase.STUTTER:
 			_update_stutter(delta)
 		GhostPhase.DISAPPEARING:
-			_blink_timer -= delta
-			if _blink_timer <= 0.0:
-				_finish_blink()
+			_vanish_timer -= delta
+			if _vanish_timer <= 0.0:
+				_finish_vanish()
 
 
 ## Standing still, waiting out the hold. Being seen here is worth one tally
@@ -481,18 +484,7 @@ func _next_hold_duration() -> float:
 ## Called by ToiletMinigame._cleanup() on every exit path (success, cancel,
 ## and death - which is itself just a cancel triggered by the existing
 ## is_alive guard). Unconditional, so nothing can outlive the session.
-##
-## If the minigame is exited mid-blink (DISAPPEARING - force_blink_now()
-## already fired, end_forced_blink() has not run yet), the player's eyes
-## would otherwise stay forced shut forever, since nothing else is left to
-## reopen them once this ghost stops being driven. Reopening here is what
-## satisfies "leaving the minigame must never leave a delayed callback able
-## to blink the player later" for the one case that could actually strand
-## the eyes closed.
 func reset() -> void:
-	if phase == GhostPhase.DISAPPEARING and is_instance_valid(_active_player) \
-			and _active_player.has_method("end_forced_blink"):
-		_active_player.call("end_forced_blink")
 	phase = GhostPhase.IDLE
 	_spawn_timer = 0.0
 	_clear_transient_state()
@@ -600,10 +592,9 @@ func _apply_lean() -> void:
 	visual.rotation.x = -deg_to_rad(lean_max_degrees) * drive
 	visual.position = Vector3(0.0, _visual_base_y + lift_max * drive, 0.0)
 
-
 ## Caught - either mid-lurch, or standing still with the last tally banked.
-## Either way the encounter is over: it glitches, then vanishes, then forces
-## the blink, then the loop re-arms.
+## Either way the encounter is over: it glitches, it vanishes, then the loop
+## re-arms.
 func _on_caught(player: Node3D) -> void:
 	phase = GhostPhase.STUTTER
 	_stutter_timer = stutter_duration
@@ -668,12 +659,11 @@ func _head_position() -> Vector3:
 	return global_position + Vector3(0, visual.position.y + head_height, 0)
 
 
-## After the stutter: the ghost actually disappears, then the existing player
-## blink API is forced so the beat reads as "I caught it, it glitched, I
-## blinked, it's gone" rather than a silent pop. The reopen is scheduled on
-## this node's own timer (see _finish_blink()) rather than left to the
-## player's _physics_process, which minigames like the toilet's disable for
-## their whole duration - see force_blink_now()'s doc comment in player.gd.
+## After the stutter: the ghost actually disappears and the beat is held for a
+## moment before the loop re-arms, so it reads as "I caught it, it glitched,
+## it's gone" rather than an instant respawn. The wait runs on this node's own
+## timer rather than the player's _physics_process, which minigames like the
+## toilet's disable for their whole duration.
 func _disappear() -> void:
 	phase = GhostPhase.DISAPPEARING
 	visual.visible = false
@@ -681,30 +671,15 @@ func _disappear() -> void:
 	visual.rotation.x = 0.0
 	visual.position = Vector3(0.0, _visual_base_y, 0.0)
 	teleport_audio.stop()
-	_blink_timer = _forced_blink_duration()
-	if is_instance_valid(_active_player) and _active_player.has_method("force_blink_now"):
-		_active_player.call("force_blink_now")
+	_vanish_timer = VANISH_BEAT_SECONDS
 
 
-## Reopens the eyes closed by _disappear(), ends this encounter, and arms the
-## next one - a banished ghost continues the spawn loop rather than ending it.
-## Advance reaching 1.0 instead resolves into the owning minigame's stun path.
-func _finish_blink() -> void:
-	var resolved_player := _active_player
-	if is_instance_valid(resolved_player) and resolved_player.has_method("end_forced_blink"):
-		resolved_player.call("end_forced_blink")
+## Ends this encounter and arms the next one - a banished ghost continues the
+## spawn loop rather than ending it. Advance reaching 1.0 instead resolves into
+## the owning minigame's stun path.
+func _finish_vanish() -> void:
 	ghost_seen.emit()
 	_arm_respawn()
-
-
-## How long the forced blink stays closed before _finish_blink() reopens it.
-## Reuses the player's own existing forced_blink_duration convention (the
-## same value force_blink() defaults to) instead of inventing a second,
-## redundant "how long is a blink" constant.
-func _forced_blink_duration() -> float:
-	if _active_player and "forced_blink_duration" in _active_player:
-		return _active_player.forced_blink_duration
-	return 0.22
 
 
 ## The last lurch landed on the player: steps_to_reach cycles went by without

@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://bskv7nqtwugr7" path="res://house3/villa_main.gd" id="3_villa_main"]
 [ext_resource type="PackedScene" path="res://ghosts/statue_ghost.tscn" id="5_statue"]
 [ext_resource type="Script" uid="uid://d3dtpcwe6oum" path="res://door/door_attack_director.gd" id="6_door_director"]
+[ext_resource type="Script" uid="uid://db3nqdyr5g1w2" path="res://director/game_director.gd" id="6_game_director"]
 [ext_resource type="PackedScene" uid="uid://dxuvjfgvxm4xr" path="res://assets/map/retro_modular_house/retro_modular_house/models/misc/stairs/stair_big_01.fbx" id="6_j6y7q"]
 [ext_resource type="PackedScene" uid="uid://ljpkrpjrjxsd" path="res://assets/map/retro_modular_house/retro_modular_house/models/floors/floor_2x2.fbx" id="7_4g01i"]
 [ext_resource type="Script" uid="uid://c5asiy3bo4o3p" path="res://audio/house_ambience.gd" id="7_house_ambience"]
@@ -1778,20 +1779,17 @@ material = SubResource("StandardMaterial3D_b57m4")
 size = Vector3(2, 0.3, 2)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_8yofm"]
-size = Vector3(2, 0.3, 2)
+size = Vector3(2, 1.8696045, 2)
 
 [sub_resource type="BoxMesh" id="BoxMesh_jd4ko"]
 material = SubResource("StandardMaterial3D_b57m4")
-size = Vector3(2, 0.3, 2)
+size = Vector3(2, 2.9667237, 2)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_3inv3"]
 size = Vector3(2, 0.3, 2)
 
 [sub_resource type="BoxMesh" id="BoxMesh_x3xiu"]
 material = SubResource("StandardMaterial3D_b57m4")
-size = Vector3(2, 0.3, 2)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_qv3wh"]
 size = Vector3(2, 0.3, 2)
 
 [sub_resource type="BoxMesh" id="BoxMesh_dnp88"]
@@ -1810,7 +1808,7 @@ size = Vector3(2, 0.3, 2)
 
 [sub_resource type="BoxMesh" id="BoxMesh_obgut"]
 material = SubResource("StandardMaterial3D_b57m4")
-size = Vector3(2, 0.3, 2)
+size = Vector3(2, 2.1266847, 2)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_md7jr"]
 size = Vector3(2, 1.1, 2)
@@ -4921,9 +4919,6 @@ size = Vector3(2, 3.5, 0.3)
 size = Vector3(2, 3.5, 0.3)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ifoo0"]
-size = Vector3(2, 3.5, 0.3)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_2scrk"]
 size = Vector3(2, 3.5, 0.3)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_mdq4f"]
@@ -23390,7 +23385,10 @@ script = ExtResource("3_villa_main")
 
 [node name="DoorAttackDirector" type="Node" parent="." unique_id=1863556327]
 script = ExtResource("6_door_director")
-automatic_waves = true
+automatic_waves = false
+
+[node name="GameDirector" type="Node" parent="." unique_id=1900014322]
+script = ExtResource("6_game_director")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=875346206]
 environment = SubResource("Environment_villa")
@@ -28106,9 +28104,11 @@ mesh = SubResource("BoxMesh_rhj7d")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 73, -0.15, 49)
 
 [node name="Collision" type="CollisionShape3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling/CeilingSlab_0878" unique_id=1081809254]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7848022, 0)
 shape = SubResource("BoxShape3D_8yofm")
 
 [node name="Mesh" type="MeshInstance3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling/CeilingSlab_0878" unique_id=378981579]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.3333617, 0)
 mesh = SubResource("BoxMesh_jd4ko")
 
 [node name="CeilingSlab_0879" type="StaticBody3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling" unique_id=407041357]
@@ -28123,11 +28123,8 @@ mesh = SubResource("BoxMesh_x3xiu")
 [node name="CeilingSlab_0880" type="StaticBody3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling" unique_id=938438078]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 75, -0.15, 49)
 
-[node name="Collision" type="CollisionShape3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling/CeilingSlab_0880" unique_id=3522057]
-shape = SubResource("BoxShape3D_qv3wh")
-
 [node name="Mesh" type="MeshInstance3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling/CeilingSlab_0880" unique_id=67401943]
-transform = Transform3D(1, 0, 0, 0, -23.570549, 0, 0, 0, 0.746039, 0, 0.86207426, -0.046844482)
+transform = Transform3D(1, 0, 0, 0, -9.531694, 0, 0, 0, 0.98586696, 0, 1.9463708, -0.046844482)
 mesh = SubResource("BoxMesh_dnp88")
 
 [node name="CeilingSlab_0881" type="StaticBody3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling" unique_id=44834640]
@@ -28146,6 +28143,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 77, -0.15, 49)
 shape = SubResource("BoxShape3D_l1fjm")
 
 [node name="Mesh" type="MeshInstance3D" parent="VillaHouse/Generated/Level_F_B1/Architecture/Ceiling/CeilingSlab_0882" unique_id=2056600217]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.91334236, 0)
 mesh = SubResource("BoxMesh_obgut")
 
 [node name="Doors" type="Node3D" parent="VillaHouse/Generated/Level_F_B1" unique_id=1454266095]
@@ -36390,7 +36388,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 75, -0.15, 47)
 shape = SubResource("BoxShape3D_85xfk")
 
 [node name="FloorTile_2556" parent="VillaHouse/Generated/Level_F_00/Architecture/FloorSlab_2555" unique_id=32746481 groups=["modular_house_asset", "villa_house_asset"] instance=ExtResource("7_4g01i")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.007156372, 0.14333144, -0.0016174316)
 metadata/source_asset = "res://assets/map/retro_modular_house/retro_modular_house/models/floors/floor_2x2.fbx"
 
 [node name="FloorSlab_2557" type="StaticBody3D" parent="VillaHouse/Generated/Level_F_00/Architecture" unique_id=1067986733]
@@ -38718,11 +38716,8 @@ metadata/source_asset = "res://assets/map/retro_modular_house/retro_modular_hous
 [node name="InteriorWall_3021" type="StaticBody3D" parent="VillaHouse/Generated/Level_F_00/Architecture" unique_id=1027387758]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 75, 1.75, 49.85)
 
-[node name="Collision" type="CollisionShape3D" parent="VillaHouse/Generated/Level_F_00/Architecture/InteriorWall_3021" unique_id=1386409741]
-shape = SubResource("BoxShape3D_2scrk")
-
 [node name="InteriorWallModule_3022" parent="VillaHouse/Generated/Level_F_00/Architecture/InteriorWall_3021" unique_id=1208218286 groups=["modular_house_asset", "villa_house_asset"] instance=ExtResource("8_f1ptq")]
-transform = Transform3D(1, 0, 0, 0, 1.061721, 0, 0, 0, 1, 0, -0.82699203, 0.15000153)
+transform = Transform3D(1, 0, 0, 0, 0.5602326, 0, 0, 0, 1, 0, 0.03134179, 0.15000153)
 metadata/source_asset = "res://assets/map/retro_modular_house/retro_modular_house/models/walls/wall_3x2.fbx"
 
 [node name="InteriorWall_3023" type="StaticBody3D" parent="VillaHouse/Generated/Level_F_00/Architecture" unique_id=1308595203]
@@ -79334,16 +79329,19 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, -12)
 
 [node name="DarknessGhost" parent="." unique_id=885318137 instance=ExtResource("12_darkness")]
 auto_manifest = true
-first_manifest_delay = 20.0
-manifest_interval = 55.0
+first_manifest_delay = 10.0
+manifest_interval = 70.0
+hunt_duration = 40.0
 threat_range = 12.0
 kill_distance = 1.15
-minimum_spawn_distance = 7.0
-patrol_speed = 1.35
+minimum_spawn_distance = 15.0
+warning_duration = 4.0
+blackout_neighbour_depth = 1
+hunt_light_lock_chance = 0.4
+normal_speed = 4.0
+darkness_speed = 5.25
+patrol_speed = 3.25
 patrol_retarget_seconds = 3.0
-zone_expansion_seconds = 15.0
-zone_expansion_walk_speed = 1.0
-zone_blackout_arrival_distance = 1.4
 failed_manifest_retry_delay = 8.0
 stuck_detection_seconds = 3.0
 stuck_movement_threshold = 0.4

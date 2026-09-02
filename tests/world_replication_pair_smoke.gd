@@ -47,11 +47,14 @@ var _darkness_ghost: DarknessGhost
 var _darkness_light: OmniLight3D
 var _door: DefenseDoor
 var _clock: NightClock
+var _ritual: TotemRitual
+var _hint_totem: RitualItem
 var _client_pid := -1
 var _full_durability := 0.0
 var _spawn_sent := false
 var _sound_sent := false
 var _darkness_retreat_sent := false
+var _totem_hint_sent := false
 ## Latched on the client the first time the ghost's teleport player changes, so
 ## a later sound of the statue's own cannot overwrite the evidence.
 var _heard_pitch := -1.0
@@ -170,12 +173,31 @@ func _build_world() -> void:
 	_clock.name = "NightClock"
 	world.add_child(_clock)
 
+	# Authored on both peers at matching paths; the authority's 77-second hint
+	# event must select this totem and make the client's copy glow as well.
+	var brazier_placeholder := (
+		(load("res://items/totem_brazier.tscn") as PackedScene).instantiate()
+		as TotemBrazier
+	)
+	brazier_placeholder.name = "BrazierPlaceholder"
+	world.add_child(brazier_placeholder)
+	_hint_totem = (load("res://items/totem.tscn") as PackedScene).instantiate() as RitualItem
+	_hint_totem.name = "HintTotem"
+	world.add_child(_hint_totem)
+	_ritual = TotemRitual.new()
+	_ritual.name = "TotemRitual"
+	_ritual.is_complete = true
+	world.add_child(_ritual)
+	_ritual.set_process(false)
+
 
 func _process(delta: float) -> bool:
 	if _done or not is_instance_valid(_ghost) or not is_instance_valid(_test_player) \
 		or not is_instance_valid(_decoy_ghost) \
 		or not is_instance_valid(_darkness_ghost) \
-		or not is_instance_valid(_door):
+		or not is_instance_valid(_door) \
+		or not is_instance_valid(_ritual) \
+		or not is_instance_valid(_hint_totem):
 		return false
 	if _visual == null:
 		_visual = _ghost.get("visual_root") as Node3D
@@ -244,6 +266,8 @@ func _drive_world() -> void:
 		_darkness_ghost._update_light_exposure(
 			_darkness_ghost.light_death_seconds + 0.01
 		)
+	if not _totem_hint_sent and _elapsed > 3.5:
+		_totem_hint_sent = _ritual._trigger_next_totem_hint()
 
 
 func _write_client_verdict() -> void:
@@ -270,6 +294,8 @@ func _write_client_verdict() -> void:
 		failures.append("no door durability arrived on the slow channel")
 	if _clock.elapsed_game_minutes <= 0:
 		failures.append("the night never arrived on the clock channel")
+	if not _hint_totem.is_guidance_highlight_active():
+		failures.append("the authority's totem hint did not highlight the same client totem")
 	if not _heard_statue_spawn_cue:
 		failures.append(
 			"the statue manifested without playing its spawn cue at the replicated position"
@@ -299,7 +325,8 @@ func _read_client_verdict() -> void:
 		+ "the ghost's NodePath-keyed position and body without manifesting the decoy, "
 		+ "could not mutate the server-owned Statue, received its reliable spawn cue "
 		+ "outside the player safety radius, its one-shot audio, "
-		+ "Darkness environmental-light retreat, the door's durability, and the night."
+		+ "Darkness environmental-light retreat, the door's durability, the night, "
+		+ "and the authority-selected totem hint."
 	)
 	quit()
 

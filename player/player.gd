@@ -34,12 +34,12 @@ signal toilet_ghost_stun_changed(active: bool)
 @export_category("Downed & Revive")
 ## Total time this player may ever spend on the floor. It is a run-long budget,
 ## not a per-death timer: it never refills, so each rescue costs the team from
-## the same pool and a third trip down is normally the last one.
-@export var downed_time_budget: float = 180.0
+## the same pool and repeated catches eventually end in spectating.
+@export var downed_time_budget: float = 350.0
 ## Flat charge taken from the budget the moment a ghost puts this player down.
 @export var downed_death_cost: float = 60.0
 ## Uninterrupted seconds a teammate must hold the interact key to lift them up.
-@export var revive_duration: float = 10.0
+@export var revive_duration: float = 5.0
 @export var revive_range: float = 2.4
 ## How fast an abandoned rescue unwinds, as a multiple of real time.
 @export var revive_decay_multiplier: float = 2.0
@@ -87,7 +87,7 @@ var is_alive: bool = true
 ## of them without adding a fourth condition to each ghost.
 var is_downed: bool = false
 var is_spectator: bool = false
-var downed_time_remaining: float = 180.0
+var downed_time_remaining: float = 350.0
 var revive_progress: float = 0.0
 ## Highest threat currently reported by any ghost - drives the horror overlay
 ## and the camera sway. Kept under its original name because the shader

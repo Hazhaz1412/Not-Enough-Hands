@@ -9,8 +9,8 @@ extends Node
 ## maps publish, so the same node works in House2 and in the villa with no
 ## map-specific coordinates anywhere.
 ##
-## Nothing is scattered once at boot. The world holds a handful of totems sized
-## to the room - three solo, five for a full team - plus a
+## Nothing is scattered once at boot. The world always holds at least five
+## totems plus a
 ## flat handful of logs; each burned totem is replaced at a new random drop,
 ## and every drop point is chosen at random from the
 ## rooms that are far from *everybody* - the objective is a trip, so an item is
@@ -38,26 +38,24 @@ const BATTERY_SCENE: PackedScene = preload("res://items/flashlight_battery.tscn"
 const BRAZIER_SCENE: PackedScene = preload("res://items/totem_brazier.tscn")
 ## Floor for `totems_by_player_count`, so an emptied or mis-authored table can
 ## never leave the map with nothing to find.
-const MIN_TOTEMS_IN_WORLD := 3
+const MIN_TOTEMS_IN_WORLD := 5
 
 ## How many totems are loose in the world, indexed by how many players are in
-## the run: three solo, four for a pair, five from three players up. Picking one
-## up still counts it; burning it is what creates a replacement elsewhere.
+## the run. The hard five-totem floor upgrades legacy lower entries; picking one
+## up still counts it, and burning it creates the replacement.
 ##
 ## It grows more slowly than the head count on purpose. Four players do not need
 ## four times the totems - what they need is not to be queueing at the same
-## three - and a map carpeted in them turns the objective from a trip into a
+## five - and a map carpeted in them turns the objective from a trip into a
 ## pickup. Past four players the fifth is enough; the shortage that creates is
 ## the coordination, which is the interesting part.
 @export var totems_by_player_count: PackedInt32Array = PackedInt32Array([3, 4, 5, 5])
 ## Logs kept in the world at once, as a flat count rather than one per player.
 ## The fire needs one after every burn, so a log has to be findable from
 ## wherever the last totem left you rather than being a second search on top of
-## the first. Six is the floor because the villa is 80 x 60 m over three
-## storeys: at three, two of them landing in the same wing left half the house
-## with none. Never drops below the per-player count either, so a full room
-## still gets a log each.
-@export_range(0, 12, 1) var firewood_in_world: int = 6
+## the first. Nine keeps several options available across the Villa's 80 x 60 m
+## and three storeys. It never drops below the per-player count either.
+@export_range(0, 16, 1) var firewood_in_world: int = 9
 ## Spare torch batteries loose in the house. Not part of the ritual at all -
 ## they live here because this node is already the thing that keeps a live item
 ## population spread over both maps' room markers, and a second director would
@@ -68,12 +66,19 @@ const MIN_TOTEMS_IN_WORLD := 3
 ## way there, so hiding it makes the trip worse rather than harder in any way
 ## worth having. It gets the near slice of the rooms and almost no exclusion
 ## radius - see `battery_spawn_distance`.
-@export_range(0, 12, 1) var batteries_in_world: int = 6
+@export_range(0, 16, 1) var batteries_in_world: int = 9
 ## Exclusion radius for batteries alone, and it exists only so one does not pop
 ## into existence in the room you are standing in. Everything past it is fair
 ## game, near slice included, which is the whole difference between this and the
 ## totems' 22 m.
 @export_range(0.0, 60.0, 0.5) var battery_spawn_distance: float = 6.0
+
+@export_category("Totem guidance")
+## Periodically reveal exactly one loose totem to every peer. The reveal is an
+## x-ray beacon rather than the normal line-of-sight glow and expires well
+## before the next hint, preserving the search between pulses.
+@export_range(5.0, 300.0, 1.0) var totem_hint_interval: float = 77.0
+@export_range(1.0, 60.0, 1.0) var totem_hint_duration: float = 12.0
 ## Burns each player owes the night, and the only number here that is authored:
 ## what one burn is *worth* is derived from it so the night always costs the
 ## same amount of night, however many people are carrying it. Three each means
@@ -128,6 +133,8 @@ var totems_burned: int = 0
 var _clock: Node = null
 var _rng := RandomNumberGenerator.new()
 var _restock_timer: float = 0.0
+var _totem_hint_timer: float = 0.0
+var _last_hinted_totem_path := NodePath()
 var _started: bool = false
 
 
@@ -154,6 +161,7 @@ func begin() -> void:
 	_sync_runway_pricing()
 	_ensure_brazier()
 	restock()
+	_totem_hint_timer = totem_hint_interval
 	_check_completion()
 
 
@@ -164,6 +172,55 @@ func _process(delta: float) -> void:
 	if _restock_timer <= 0.0:
 		_restock_timer = restock_interval
 		restock()
+	if WorldNet.is_world_authority() and totem_hint_interval > 0.0:
+		_totem_hint_timer -= delta
+		if _totem_hint_timer <= 0.0:
+			_totem_hint_timer = totem_hint_interval
+			_trigger_next_totem_hint()
+
+
+## Authority chooses the destination once; clients only render that choice.
+## The runtime item names are shared by WorldReplicator, so a scene-relative
+## NodePath identifies the same spawned totem on every peer.
+func _trigger_next_totem_hint() -> bool:
+	if not WorldNet.is_world_authority():
+		return false
+	var candidates: Array[Node3D] = []
+	for node: Node in get_tree().get_nodes_in_group(&"totems"):
+		var totem := node as Node3D
+		if totem and not totem.is_queued_for_deletion() and _is_loose(totem) \
+				and totem.has_method(&"show_guidance_highlight"):
+			candidates.append(totem)
+	if candidates.is_empty():
+		return false
+	if candidates.size() > 1 and not _last_hinted_totem_path.is_empty():
+		var previous := get_node_or_null(_last_hinted_totem_path) as Node3D
+		if previous in candidates:
+			candidates.erase(previous)
+	var selected := candidates[_rng.randi_range(0, candidates.size() - 1)]
+	var selected_path := get_path_to(selected)
+	_last_hinted_totem_path = selected_path
+	_apply_totem_hint(selected_path, totem_hint_duration)
+	if _network_session_active():
+		_apply_totem_hint.rpc(selected_path, totem_hint_duration)
+	return true
+
+
+@rpc("authority", "call_remote", "reliable")
+func _apply_totem_hint(totem_path: NodePath, duration: float) -> void:
+	# Clear the prior beacon first so packet retries or a very short configured
+	# interval can never leave two timed objective markers active together.
+	for node: Node in get_tree().get_nodes_in_group(&"totems"):
+		if node.has_method(&"clear_guidance_highlight"):
+			node.call(&"clear_guidance_highlight")
+	var selected := get_node_or_null(totem_path)
+	if selected and selected.has_method(&"show_guidance_highlight"):
+		selected.call(&"show_guidance_highlight", duration)
+
+
+func _network_session_active() -> bool:
+	var manager := get_node_or_null("/root/NetworkManager")
+	return manager != null and bool(manager.get("session_active"))
 
 
 ## Called by the brazier once a totem has actually gone into the fire. Returns

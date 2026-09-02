@@ -33,6 +33,10 @@ func _run() -> void:
 
 	_assert(manager.enable_power_drain, "House2 must actually drain power or no outage ever happens.")
 	_assert(manager.get_total_load() > 0.0, "House2 registered no power draw to drain.")
+	_assert(
+		is_equal_approx(manager.full_load_reserve_seconds, 270.0),
+		"A fully-lit reserve must last 270 real seconds."
+	)
 
 	# One night, driven at a fixed step so the count does not depend on frame
 	# rate. Each outage is repaired the way a player would: at the breaker.

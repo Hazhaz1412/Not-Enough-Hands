@@ -13,6 +13,32 @@ func _run() -> void:
 	door.get_node("WarningAudio").stream = null
 	door.get_node("StrongAttackAudio").stream = null
 	door.set_random_seed(42)
+	if not is_equal_approx(door.stalking_wait_min, 5.0) \
+			or not is_equal_approx(door.stalking_wait_max, 5.0) \
+			or not is_equal_approx(door.weak_phase_duration, 12.0) \
+			or not is_equal_approx(door.damage_tick_interval, 2.0):
+		_fail("Door attacks must warn for 5 s, scratch for 12 s, and tick every 2 s.")
+		return
+	if not door.begin_targeting(true):
+		_fail("Defense door could not begin its five-second warning.")
+		return
+	door._refresh_distress_marker()
+	if door.get_node_or_null("ShortHandedDistress") == null:
+		_fail("A targeted door was not highlighted during its warning window.")
+		return
+	door._physics_process(4.99)
+	if door.attack_phase != DefenseDoor.AttackPhase.STALKING:
+		_fail("The door began scratching before the full five-second warning elapsed.")
+		return
+	door._physics_process(0.01)
+	if door.attack_phase != DefenseDoor.AttackPhase.WEAK_ATTACK:
+		_fail("The door did not begin scratching after its five-second warning.")
+		return
+	door.drive_ghost_away()
+	door._refresh_distress_marker()
+	if door.get_node_or_null("ShortHandedDistress") != null:
+		_fail("The door highlight remained after the attack ended.")
+		return
 
 	var damaged := door.take_damage(10.0)
 	if not is_equal_approx(damaged, 10.0):

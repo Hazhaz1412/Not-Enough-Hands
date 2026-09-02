@@ -29,9 +29,15 @@ func _run() -> void:
 	_assert(manager.get_house_light_count() == 56, "Expected 56 Villa room/junction lights")
 	_assert(manager.devices.size() == 56, "Expected 56 registered Villa electrical devices")
 	var first_fixture := manager.devices[0] as ElectricalDevice
+	var electrical_setup := villa.get_node_or_null("VillaElectrical") as VillaElectricalSetup
 	_assert(
 		first_fixture != null and is_equal_approx(first_fixture.powered_light.light_energy, 1.25),
 		"Villa fixtures must use the brighter 1.25 energy setting"
+	)
+	_assert(
+		electrical_setup != null
+			and is_equal_approx(electrical_setup.fixture_range_multiplier, 1.4),
+		"Villa fixtures must use the wider 1.4 range multiplier"
 	)
 	var player_flashlight := (villa.get_node("Player") as Node3D).get_node(
 		"CameraPivot/Camera3D/Flashlight"
@@ -56,6 +62,10 @@ func _run() -> void:
 	_assert(dev_tools.zone_controls.get_child_count() == 13, "DevTools must expose one control per electrical zone")
 	var darkness_ghost := villa.get_node_or_null("DarknessGhost") as DarknessGhost
 	_assert(darkness_ghost != null, "villa_main is missing DarknessGhost")
+	_assert(
+		is_equal_approx(darkness_ghost.manifest_interval, 110.0),
+		"DarknessGhost must wait 110 seconds between attacks"
+	)
 	_assert(not darkness_ghost.is_manifested(), "DarknessGhost must begin hidden")
 	var target_player := villa.get_node("Player") as CharacterBody3D
 	# Simulate a prior hunt's sighting latch; every new manifestation must clear

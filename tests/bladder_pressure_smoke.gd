@@ -20,7 +20,7 @@ func _run() -> void:
 	root.add_child(bladder)
 	bladder.set_physics_process(false)
 
-	if not _test_fill_takes_ninety_game_minutes(bladder):
+	if not _test_fill_takes_one_hundred_eighty_game_minutes(bladder):
 		return
 	if not _test_the_debuff_band_is_the_top_quarter():
 		return
@@ -32,7 +32,7 @@ func _run() -> void:
 		return
 
 	print(
-		"Bladder pressure smoke test passed: 90-minute fill, debuff band, "
+		"Bladder pressure smoke test passed: 180-minute fill, debuff band, "
 		+ "self-emptying over a flat 20s, a toilet cancelling it, "
 		+ "and a server-driven value ending one."
 	)
@@ -59,12 +59,11 @@ func _test_a_networked_accident_can_end_without_the_local_drain(
 	return true
 
 
-## 90 in-game minutes at the clock's 1.5 real seconds per minute. It was 45,
-## which put a player back at the toilet a minute after leaving it.
-func _test_fill_takes_ninety_game_minutes(bladder: PlayerBladder) -> bool:
+## 180 in-game minutes at the clock's 1.5 real seconds per minute.
+func _test_fill_takes_one_hundred_eighty_game_minutes(bladder: PlayerBladder) -> bool:
 	var fill_seconds := bladder.bladder_max / bladder.bladder_fill_rate
-	if not is_equal_approx(fill_seconds, 90.0 * 1.5):
-		return _fail("An empty bladder should fill in 135s, got %.2fs." % fill_seconds)
+	if not is_equal_approx(fill_seconds, 180.0 * 1.5):
+		return _fail("An empty bladder should fill in 270s, got %.2fs." % fill_seconds)
 	return true
 
 

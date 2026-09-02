@@ -36,8 +36,8 @@ func _run() -> void:
 
 	print(
 		"Totem ritual smoke test passed: 4:00 AM ceiling, two-handed totem, "
-		+ "burn/relight loop, wall-blocked highlight, five random totems, an "
-		+ "easier battery population on its own radius, three burns per player at "
+		+ "burn/relight loop, wall-blocked seen glow, 77-second x-ray hint, five random totems, "
+		+ "nine logs and nine batteries, three burns per player at "
 		+ "every head count, an uncapped bank a whole team can cash into at once, "
 		+ "every owed burn worth something including the clipped last one, and "
 		+ "end-of-ritual cleanup."
@@ -92,7 +92,7 @@ func _build_world() -> bool:
 	# every item in by name, so this director cannot create its own population;
 	# keeping the normal target also prevents its deferred burn restock from
 	# treating the next test's manually created totem as surplus.
-	# One fake player is in the group by now, so the table would give three.
+	# One fake player is in the group by now; the hard floor still keeps five.
 	_ritual.firewood_in_world = 0
 	_root.add_child(_ritual)
 	await _ritual.begin()
@@ -256,7 +256,7 @@ func _check_spawn_rules() -> bool:
 	await director.begin()
 
 	if get_nodes_in_group(&"totems").size() != TotemRitual.MIN_TOTEMS_IN_WORLD:
-		return _fail("An empty population table should fall back to the floor of three.")
+		return _fail("An empty population table should fall back to the floor of five.")
 	# Logs are a flat population, not one per player: the fire needs one after
 	# every burn, so the map always carries a handful of them.
 	if get_nodes_in_group(&"fire_fuel").size() != director.firewood_in_world:
@@ -264,6 +264,8 @@ func _check_spawn_rules() -> bool:
 			"The map should always carry %d logs, found %d."
 			% [director.firewood_in_world, get_nodes_in_group(&"fire_fuel").size()]
 		)
+	if director.firewood_in_world != 9 or director.batteries_in_world != 9:
+		return _fail("The expanded item supply must keep nine logs and nine batteries in the map.")
 	for item: Node in get_nodes_in_group(&"totems") + get_nodes_in_group(&"fire_fuel"):
 		var spawned := item as Node3D
 		if spawned.global_position.distance_to(first.global_position) < 70.0:
@@ -284,6 +286,22 @@ func _check_spawn_rules() -> bool:
 		var gap := cell.global_position.distance_to(first.global_position)
 		if gap < director.battery_spawn_distance:
 			return _fail("A battery landed %.1f m from a player, inside its own radius." % gap)
+
+	# The authority starts one shared objective beacon every 77 seconds. Calling
+	# the same process step the runtime uses proves the interval and one-at-a-time
+	# rule without making the smoke actually wait 77 real seconds.
+	for item: Node in get_nodes_in_group(&"totems"):
+		item.call(&"clear_guidance_highlight")
+	director._totem_hint_timer = 0.01
+	director._process(0.02)
+	var hinted := 0
+	for item: Node in get_nodes_in_group(&"totems"):
+		if bool(item.call(&"is_guidance_highlight_active")):
+			hinted += 1
+	if hinted != 1:
+		return _fail("A 77-second hint tick must highlight exactly one loose totem, got %d." % hinted)
+	if not is_equal_approx(director._totem_hint_timer, 77.0):
+		return _fail("The totem hint timer did not reset to 77 seconds.")
 
 	var second := _fake_player(stage, Vector3(0, 0, 4))
 	director.restock()

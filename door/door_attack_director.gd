@@ -16,10 +16,10 @@ signal attack_wave_started(targets: Array[Node])
 @export_range(1.0, 32.0, 0.5) var weak_door_focus: float = 8.0
 
 @export_category("Short-handed tempo")
-## The other half of the short-handed bargain. A thin team is shown which door
-## is being hit (`DefenseDoor.short_handed_marker`) and pays for it here: the gap
-## between waves is multiplied by this once per missing player, compounding, so
-## the tempo steepens as the team thins instead of stepping once at "not four".
+## The gap between waves is multiplied by this once per missing player,
+## compounding, so the tempo steepens as the team thins instead of stepping once
+## at "not four". Door warnings are now shown to every team independently of
+## this pacing rule.
 ## At the default a trio plays at 0.82 of the authored gap, a pair at 0.67 and a
 ## lone survivor at 0.55.
 ##

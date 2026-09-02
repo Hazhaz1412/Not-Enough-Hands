@@ -33,9 +33,12 @@ enum AttackPhase {
 @export var minimum_repair_cap_after_failure: float = 10.0
 
 @export_category("Ghost attack")
-@export var stalking_wait_min: float = 4.0
-@export var stalking_wait_max: float = 7.0
-@export var weak_phase_duration: float = 8.0
+## Every target is highlighted for exactly five seconds before the first
+## scratch, giving the team a reliable warning window instead of an RNG roll.
+@export var stalking_wait_min: float = 5.0
+@export var stalking_wait_max: float = 5.0
+## Scratching remains its own readable phase before the heavy impacts begin.
+@export var weak_phase_duration: float = 12.0
 ## One apparition only takes a bounded bite out of the door, then leaves. Two
 ## unanswered visits open any entrance in either map - and one is enough where an
 ## entrance is thinner than this floor: the villa's attic skylight carries 40
@@ -47,31 +50,25 @@ enum AttackPhase {
 ## Scratches are deliberately spaced out so players have time to hear, locate,
 ## and answer the attacked entrance. These ticks set the *rate* the door bleeds
 ## at, not what a visit is worth: the bite above is unchanged, so an unanswered
-## entrance still falls to the second visit, it just takes about nineteen
-## seconds to get there rather than thirteen. Those extra six seconds are the
-## whole crossing time of the villa, and are what make hearing an entrance from
-## across the house worth anything.
+## entrance still falls to the second visit. The fixed warning, longer scratch
+## phase and wider tick spacing make the transition to heavy impacts readable
+## from across the Villa.
 ##
 ## Lengthening a visit used to be unaffordable because DoorAttackDirector ran on
 ## a blind 9-16 s timer and a long visit would starve it. GameDirector now owns
 ## when a wave happens and counts an attacked door against its concurrency
 ## budget, so a slower visit costs pacing nothing - it is the director's job to
 ## decide the night is quiet, not this timer's.
-@export var damage_tick_interval: float = 1.5
+@export var damage_tick_interval: float = 2.0
 @export var weak_damage_min: float = 2.0
 @export var weak_damage_max: float = 3.5
 @export var strong_damage_min: float = 6.5
 @export var strong_damage_max: float = 9.0
 
-@export_category("Short-handed help")
-## Seven entrances are authored for four pairs of hands. Below this many players
-## still in the run, the entrance *currently being hit* draws itself through the
-## walls. It is deliberately not a map aid: an idle door stays invisible, a
-## quiet door stays invisible, and the marker dies with the attack. All it ever
-## answers is "which one is screaming", which a full team answers by ear and a
-## pair of players cannot. DoorAttackDirector charges for it in tempo.
-@export var short_handed_marker: bool = true
-@export_range(1, 8, 1) var full_team_size: int = 4
+@export_category("Attack warning")
+## The selected entrance draws itself through walls from the start of STALKING
+## until the attack ends. It is never a map aid: idle doors remain invisible.
+@export var attack_marker_enabled: bool = true
 
 @export_category("Audio variation")
 @export var warning_pitch_min: float = 0.88
@@ -190,11 +187,10 @@ func _refresh_distress_marker() -> void:
 	# A door on its way out of the tree still gets processed for a frame or two.
 	# Parenting a fresh marker to it there leaks the whole subtree, because the
 	# parent has already been collected for deletion and will not take it with it.
-	var wanted := short_handed_marker \
+	var wanted := attack_marker_enabled \
 		and under_attack \
 		and is_inside_tree() \
-		and not is_queued_for_deletion() \
-		and players_in_run(get_tree()) < full_team_size
+		and not is_queued_for_deletion()
 	if wanted == is_instance_valid(_distress_marker):
 		return
 	if not wanted:

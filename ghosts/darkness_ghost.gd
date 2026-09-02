@@ -19,7 +19,9 @@ enum EncounterPhase {
 @export_category("Darkness Ghost")
 @export var auto_manifest := true
 @export_range(1.0, 300.0, 1.0) var first_manifest_delay := 10.0
-@export_range(1.0, 300.0, 1.0) var manifest_interval := 70.0
+## A longer cooldown keeps the encounter threatening without letting it dominate
+## every trip across the Villa.
+@export_range(1.0, 300.0, 1.0) var manifest_interval := 110.0
 ## How long one hunt lasts before the ghost gives up and the circuits it cut
 ## come back. Without this the very first manifest never ends - it holds the
 ## pocket dark and chases until it kills somebody or dies in light - so a night

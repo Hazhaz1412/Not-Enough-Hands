@@ -17,8 +17,8 @@ func _run() -> void:
 	var bladder: PlayerBladder = player.bladder
 	var hud: ProgressBar = player.get_node("StatusUI/BladderPanel/Margin/VBox/BladderBar")
 	var default_full_duration := bladder.bladder_max / bladder.bladder_fill_rate
-	if not is_equal_approx(default_full_duration, 90.0 * 1.5):
-		push_error("An empty bladder should fill after 90 game minutes / 135 real seconds; got %.3fs." % default_full_duration)
+	if not is_equal_approx(default_full_duration, 180.0 * 1.5):
+		push_error("An empty bladder should fill after 180 game minutes / 270 real seconds; got %.3fs." % default_full_duration)
 		quit(1)
 		return
 

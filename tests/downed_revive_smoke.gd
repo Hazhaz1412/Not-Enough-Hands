@@ -3,7 +3,7 @@ extends SceneTree
 ## Covers the co-op downed contract from README.md: a ghost kill with a
 ## teammate still standing puts a player on the floor instead of ending their
 ## run, ghosts stop targeting them there, the bleed-out clock pauses for the
-## whole ten-second rescue, and the 180-second budget - charged 60 per death -
+## whole five-second rescue, and the 350-second budget - charged 60 per death -
 ## is what eventually turns them into a spectator. Being caught is still a
 ## scare on the way down: the jumpscare plays for every catch, and only a catch
 ## with nobody left to rescue puts the death screen behind it.
@@ -35,10 +35,10 @@ func _run() -> void:
 	downed.global_position = Vector3.ZERO
 	mate.global_position = Vector3(1.2, 0.0, 0.0)
 
-	if not is_equal_approx(downed.downed_time_budget, 180.0) \
+	if not is_equal_approx(downed.downed_time_budget, 350.0) \
 		or not is_equal_approx(downed.downed_death_cost, 60.0) \
-		or not is_equal_approx(downed.revive_duration, 10.0):
-		_fail("Downed budget must be 180 s, 60 s per death, 10 s to revive.")
+		or not is_equal_approx(downed.revive_duration, 5.0):
+		_fail("Downed budget must be 350 s, 60 s per death, 5 s to revive.")
 		return
 	if not is_equal_approx(downed.downed_time_remaining, downed.downed_time_budget):
 		_fail("A fresh player should start on the full downed budget.")
@@ -55,15 +55,19 @@ func _run() -> void:
 	if not _expect_solo_kill_still_ends_the_run():
 		return
 
-	# Third death spends the last 60 seconds of the budget outright, so there is
-	# no floor to lie on and no rescue window: straight to spectating.
+	# The larger shared budget survives five 60-second catches (plus the small
+	# amount spent unattended above). The sixth finally exhausts it.
+	for label: String in ["third", "fourth", "fifth"]:
+		downed.revive()
+		mate.is_alive = true
+		mate.is_downed = false
+		mate.is_spectator = false
+		if not _expect_downed_after_kill(label):
+			return
 	downed.revive()
-	mate.is_alive = true
-	mate.is_downed = false
-	mate.is_spectator = false
 	downed.kill_by_ghost(null)
 	if downed.is_downed or not downed.is_spectator:
-		_fail("Spending the last 60 s of the budget must go straight to spectator.")
+		_fail("Exhausting the 350 s downed budget must go straight to spectator.")
 		return
 	if not downed.collision_shape.disabled:
 		_fail("A spectator must not keep a solid capsule in the world.")
@@ -75,7 +79,7 @@ func _run() -> void:
 	print(
 		"Downed revive smoke test passed: kill with a teammate downs instead of "
 		+ "killing, ghosts drop the target, rescue pauses the clock and takes "
-		+ "10 s, and 180 s spent at 60 s per death ends in spectator."
+		+ "5 s, and the 350 s run-long budget eventually ends in spectator."
 	)
 	quit()
 
@@ -157,7 +161,7 @@ func _expect_revive_pauses_the_clock() -> bool:
 		downed._update_downed(STEP)
 		elapsed += STEP
 	if not downed.is_downed:
-		_fail("The rescue finished in %.2f s; it must take a full 10 s." % elapsed)
+		_fail("The rescue finished in %.2f s; it must take a full 5 s." % elapsed)
 		Input.action_release("interact")
 		return false
 	if not is_equal_approx(downed.downed_time_remaining, before):
@@ -168,14 +172,14 @@ func _expect_revive_pauses_the_clock() -> bool:
 		Input.action_release("interact")
 		return false
 	if downed.get_revive_ratio() < 0.95:
-		_fail("Rescue progress should be nearly complete after 10 s of holding.")
+		_fail("Rescue progress should be nearly complete after 5 s of holding.")
 		Input.action_release("interact")
 		return false
 
 	downed._update_downed(STEP * 2.0)
 	Input.action_release("interact")
 	if downed.is_downed or not downed.is_alive:
-		_fail("Ten seconds of holding must put the player back on their feet.")
+		_fail("Five seconds of holding must put the player back on their feet.")
 		return false
 	if not is_equal_approx(downed.downed_time_remaining, before):
 		_fail("A rescue must not refill the downed budget.")

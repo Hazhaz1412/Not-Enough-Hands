@@ -79330,7 +79330,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, -12)
 [node name="DarknessGhost" parent="." unique_id=885318137 instance=ExtResource("12_darkness")]
 auto_manifest = true
 first_manifest_delay = 10.0
-manifest_interval = 70.0
+manifest_interval = 110.0
 hunt_duration = 40.0
 threat_range = 12.0
 kill_distance = 1.15

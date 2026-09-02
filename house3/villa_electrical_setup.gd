@@ -20,7 +20,9 @@ extends Node3D
 @export_range(0.0, 10000.0, 1.0) var room_light_consumption := 60.0
 @export_range(0.0, 10000.0, 1.0) var junction_light_consumption := 35.0
 @export_range(0.1, 5.0, 0.05) var fixture_light_energy := 1.25
-@export_range(0.5, 2.0, 0.05) var fixture_range_multiplier := 1.15
+## Wider pools keep corridors and the larger Villa rooms readable without
+## raising energy or the number of shadow-casting fixtures.
+@export_range(0.5, 2.0, 0.05) var fixture_range_multiplier := 1.4
 @export var rebuild_on_ready := true
 
 @export_category("Client Lighting Budget")
@@ -90,7 +92,7 @@ func build_fixtures() -> void:
 		var light_range := clampf(
 			maxf(room_size.x, room_size.z) * 0.55 * fixture_range_multiplier,
 			5.0,
-			13.5
+			16.5
 		)
 		_create_fixture(
 			root,

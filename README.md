@@ -123,9 +123,9 @@ Four rules make it a job rather than a button:
   **firewood** (`items/firewood.tscn`, one slot) back to it and held **E** for
   1.5 seconds to relight it. Because a totem takes both hands, that is always a
   separate trip.
-- **The map always holds at least five totems at once**, plus its shared log supply, and
-  nothing is scattered up front. Picking an item up does not replace it -
-  burning it does, and the replacement appears somewhere else entirely.
+- **The map always holds at least five totems at once**, plus **nine logs and
+  nine flashlight batteries**. Picking an item up does not replace it - burning
+  it does, and the replacement appears somewhere else entirely.
 - **4:00 AM is a ceiling, not a target.** A burn is granted only the minutes
   that are left below 4:00 AM, so burning at 3:50 buys ten minutes and lands on
   4:00 exactly. Once the night is there - burned to it or simply arrived at it -
@@ -145,7 +145,9 @@ Totems and firewood **glow only while you can actually see them**: inside the
 camera frustum, within 22 m (16 m for firewood), and with nothing solid in the
 way. The check is a frustum test plus one world-masked raycast every 0.12 s, so
 the glow is a reward for sweeping a room with your eyes and never an x-ray
-through a wall.
+through a wall. Separately, every **77 seconds** the authority selects one loose
+totem for a **12-second through-wall beacon**, and every client sees the same
+selection.
 
 ## Going down, and being picked back up
 
@@ -157,16 +159,16 @@ the floor instead:
   around from where you are lying, and ghosts stop treating you as a target the
   moment you go down — they will not finish a body on the floor, and they lose
   interest until somebody lifts you.
-- **The budget is a whole run, not one death.** Every player has **180 seconds**
+- **The budget is a whole run, not one death.** Every player has **350 seconds**
   of total floor time. Each death takes a flat **60 seconds** off that budget up
   front, and the rest drains in real time while you lie there. It never refills,
-  so a rescue is a reprieve, not a reset, and three deaths is normally the limit.
+  so a rescue is a reprieve, not a reset.
 - **The ring is the clock.** Downed players show as a ring drawn straight onto
   every teammate's HUD, so it reads through walls, and it stays pinned to the
   screen edge when the body is behind you. The outer sweep is the time left, the
   inner sweep is how far the rescue has got. Deliberately no numbers.
-- **Ten seconds, held.** A teammate stands next to the body and holds **E** for
-  ten uninterrupted seconds. The bleed-out clock is **frozen** for the whole
+- **Five seconds, held.** A teammate stands next to the body and holds **E** for
+  five uninterrupted seconds. The bleed-out clock is **frozen** for the whole
   rescue, so being reached in time is what matters, not being reached quickly.
   Letting go unwinds the progress at double speed.
 - **Spectator.** When the budget reaches zero — bled out, or spent by a death
@@ -769,8 +771,8 @@ shipping houses the wall-crawling never actually happened.
 `downed_revive_smoke.gd` covers the co-op downed contract above: that a kill with
 a teammate still standing puts a player on the floor rather than ending their
 run, that no ghost will target them there and will again once they are up, that
-each death charges exactly 60 seconds of the 180-second budget, that the
-bleed-out clock is genuinely frozen for all ten seconds of a rescue and the
+  each death charges exactly 60 seconds of the 350-second budget, that the
+  bleed-out clock is genuinely frozen for all five seconds of a rescue and the
 budget is not refilled by one, that a teammate out of range cannot start a
 rescue, that spending the last of the budget goes straight to spectator with no
 collision left in the world, and that a kill with nobody left standing still

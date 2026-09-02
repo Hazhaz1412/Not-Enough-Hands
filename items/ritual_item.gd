@@ -39,6 +39,9 @@ var _seen: bool = false
 var _seen_blend: float = 0.0
 var _probe_timer: float = 0.0
 var _pulse: float = 0.0
+## Set by TotemRitual's periodic guidance event. Unlike the ordinary seen glow,
+## this is deliberately visible through walls so it can point to a destination.
+var _guidance_time_remaining: float = 0.0
 var _overlays: Array[StandardMaterial3D] = []
 
 
@@ -51,6 +54,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not highlight_enabled:
 		return
+	_guidance_time_remaining = maxf(_guidance_time_remaining - delta, 0.0)
 	_probe_timer -= delta
 	if _probe_timer <= 0.0:
 		_probe_timer = highlight_probe_interval
@@ -59,7 +63,9 @@ func _process(delta: float) -> void:
 		_seen_blend, 1.0 if _seen else 0.0, delta / maxf(highlight_fade_seconds, 0.01)
 	)
 	_pulse += delta * highlight_pulse_speed
-	_apply_highlight(_seen_blend * (0.55 + 0.45 * sin(_pulse * TAU)))
+	var guidance_active := _guidance_time_remaining > 0.0 and not _held and visible
+	var pulse_level := 0.55 + 0.45 * sin(_pulse * TAU)
+	_apply_highlight(maxf(_seen_blend, 1.0 if guidance_active else 0.0) * pulse_level, guidance_active)
 
 
 func set_held(held: bool) -> void:
@@ -68,7 +74,25 @@ func set_held(held: bool) -> void:
 	if held:
 		_seen = false
 		_seen_blend = 0.0
+		_guidance_time_remaining = 0.0
 		_apply_highlight(0.0)
+
+
+## Temporarily turns this item into an objective beacon. TotemRitual only calls
+## it on one loose totem at a time; keeping the API on the item lets each peer
+## render the same replicated choice without replicating materials or lights.
+func show_guidance_highlight(duration: float) -> void:
+	if _held or duration <= 0.0:
+		return
+	_guidance_time_remaining = maxf(_guidance_time_remaining, duration)
+
+
+func clear_guidance_highlight() -> void:
+	_guidance_time_remaining = 0.0
+
+
+func is_guidance_highlight_active() -> bool:
+	return _guidance_time_remaining > 0.0 and not _held
 
 
 ## Frustum + range + line of sight, in that order: the two cheap rejections
@@ -111,10 +135,12 @@ func _build_highlight_overlays() -> void:
 		_overlays.append(overlay)
 
 
-func _apply_highlight(level: float) -> void:
+func _apply_highlight(level: float, through_walls: bool = false) -> void:
 	var clamped := clampf(level, 0.0, 1.0)
 	for overlay: StandardMaterial3D in _overlays:
 		overlay.albedo_color = Color(highlight_color, clamped * highlight_alpha_max)
+		overlay.no_depth_test = through_walls
+		overlay.render_priority = 100 if through_walls else 0
 	if glow:
 		glow.visible = clamped > 0.01
 		glow.light_energy = clamped * highlight_light_energy

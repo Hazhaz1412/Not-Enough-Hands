@@ -16,10 +16,9 @@ signal wetting_started
 signal wetting_ended
 
 ## At the default clock speed (1.5 real seconds per game minute), this makes an
-## empty bladder full after 90 in-game minutes / 135 real seconds. It was half
-## that, which meant a player was back at the toilet a minute after leaving it -
-## the need read as a bug rather than as pressure.
-const DEFAULT_FULL_DURATION_REAL_SECONDS: float = 90.0 * 1.5
+## empty bladder full after 180 in-game minutes / 270 real seconds. The longer
+## runway keeps toilet pressure meaningful without interrupting every trip.
+const DEFAULT_FULL_DURATION_REAL_SECONDS: float = 180.0 * 1.5
 ## What a controlled session at the toilet costs, and the number the loss of
 ## control below is measured against. Kept here rather than read off
 ## ToiletMinigame so the bladder does not depend on a minigame it never sees.

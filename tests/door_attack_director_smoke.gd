@@ -50,21 +50,19 @@ func _run() -> void:
 		return
 	if not await _test_repairing_restores_the_baseline_weight(packed_scene):
 		return
-	if not await _test_a_short_team_is_shown_the_door_and_charged_for_it(packed_scene):
+	if not await _test_every_team_is_shown_the_door_and_short_teams_are_charged(packed_scene):
 		return
 
 	print(
 		"Door attack director smoke test passed: three-door cap, weakest-first "
-		+ "targeting, repaired doors back to baseline, short-handed marker and tempo."
+		+ "targeting, repaired doors back to baseline, universal warning marker and short-handed tempo."
 	)
 	quit()
 
 
-## The short-handed bargain, both halves at once, because they only make sense
-## as a pair: a thin team is shown which entrance is being hit, and pays for it
-## in how fast the next wave arrives. A change that keeps the marker and drops
-## the tempo cost - or the reverse - is a balance regression this catches.
-func _test_a_short_team_is_shown_the_door_and_charged_for_it(
+## Every team now gets the five-second targeted-door warning. Short-handed teams
+## still pay the existing faster wave tempo independently.
+func _test_every_team_is_shown_the_door_and_short_teams_are_charged(
 	packed_scene: PackedScene
 ) -> bool:
 	var arena := Node3D.new()
@@ -102,11 +100,11 @@ func _test_a_short_team_is_shown_the_door_and_charged_for_it(
 		arena.queue_free()
 		return false
 
-	# A full house gets no marker at all - it is expected to find the noise.
-	door.full_team_size = 0
+	# Simulating a full roster in the pacing director must not hide the warning.
+	director.full_team_size = 0
 	door._refresh_distress_marker()
-	if door.get_node_or_null("ShortHandedDistress") != null:
-		_fail("A full team was handed the marker anyway.")
+	if door.get_node_or_null("ShortHandedDistress") == null:
+		_fail("A full team did not receive the targeted-door warning.")
 		arena.queue_free()
 		return false
 

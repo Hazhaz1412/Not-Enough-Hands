@@ -34,11 +34,10 @@ var current_power: float = 1000.0
 ## with it and the night goes dark at exactly the same moments. Change this one.
 ##
 ## One night is 605 real seconds (23:55 -> 06:00 at 1.6575 s per game minute), so
-## 200 puts three outages in a fully-lit night - at 3:20, 6:40 and 10:00 in,
-## the last landing five seconds before dawn - and fewer if the house is run
-## dark on purpose, or if the repairs in between take any real time at all,
-## which they do: the third is the one a slow team never sees.
-@export_range(10.0, 3600.0, 5.0) var full_load_reserve_seconds: float = 200.0
+## At the current 605-second night, 270 seconds gives a fully-lit team two
+## natural outages at most. Switching rooms off still stretches the reserve
+## proportionally, so careful power use remains worthwhile.
+@export_range(10.0, 3600.0, 5.0) var full_load_reserve_seconds: float = 270.0
 
 
 @export_category("House Lighting")

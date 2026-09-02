@@ -7,6 +7,7 @@
 [ext_resource type="AudioStream" path="res://assets/audio/crawler_breath.ogg" id="5_breath"]
 [ext_resource type="AudioStream" path="res://assets/audio/crawler_scream.ogg" id="6_scream"]
 [ext_resource type="AudioStream" path="res://assets/audio/crawler_bone_snap.wav" id="7_bone"]
+[ext_resource type="PackedScene" path="res://assets/ghosts/ghost_crawler/Meshy_AI_model_Animation_Walking_withSkin.glb" id="8_model"]
 
 [sub_resource type="ShaderMaterial" id="Material_flesh"]
 render_priority = 0
@@ -245,67 +246,83 @@ position = Vector3(0, -0.06, 0)
 
 [node name="BodyPivot" type="Node3D" parent="VisualRoot"]
 
+[node name="Model" parent="VisualRoot/BodyPivot" instance=ExtResource("8_model")]
+transform = Transform3D(-60, 0, -5.2447e-06, 0, 60, 0, 5.2447e-06, 0, -60, 0, 0, 0)
+
 [node name="Pelvis" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0, 0.005, 0.4)
 rotation = Vector3(-0.09, 0, 0.04)
 mesh = SubResource("Mesh_pelvis")
 
 [node name="VertebraA" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0.005, 0.03, 0.26)
 rotation = Vector3(0.06, 0.05, -0.07)
 mesh = SubResource("Mesh_vertebra")
 
 [node name="VertebraB" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(-0.006, 0.045, 0.13)
 rotation = Vector3(0.02, -0.08, 0.09)
 mesh = SubResource("Mesh_vertebra")
 
 [node name="VertebraC" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0.004, 0.05, 0.005)
 rotation = Vector3(-0.03, 0.04, -0.05)
 mesh = SubResource("Mesh_vertebra")
 
 [node name="SpineSpurA" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0.004, 0.115, 0.26)
 rotation = Vector3(0.32, 0.06, -0.1)
 mesh = SubResource("Mesh_spine_spur")
 
 [node name="SpineSpurB" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(-0.005, 0.13, 0.13)
 rotation = Vector3(0.24, -0.05, 0.12)
 mesh = SubResource("Mesh_spine_spur")
 
 [node name="SpineSpurC" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0.003, 0.135, 0.005)
 rotation = Vector3(0.18, 0.03, -0.08)
 mesh = SubResource("Mesh_spine_spur")
 
 [node name="Ribcage" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0, 0.02, -0.19)
 scale = Vector3(0.95, 0.66, 1.28)
 mesh = SubResource("Mesh_ribcage")
 
 [node name="RibA" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0, 0.095, -0.05)
 rotation = Vector3(-0.22, 0, 0.05)
 mesh = SubResource("Mesh_rib")
 
 [node name="RibB" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0, 0.115, -0.17)
 rotation = Vector3(-0.05, 0, -0.03)
 mesh = SubResource("Mesh_rib")
 
 [node name="RibC" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0, 0.105, -0.29)
 rotation = Vector3(0.16, 0, 0.04)
 mesh = SubResource("Mesh_rib")
 
 [node name="ScapulaLeft" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(-0.13, 0.115, -0.28)
 rotation = Vector3(0.14, 0.3, -0.5)
 mesh = SubResource("Mesh_scapula")
 
 [node name="ScapulaRight" type="MeshInstance3D" parent="VisualRoot/BodyPivot"]
+visible = false
 position = Vector3(0.13, 0.115, -0.28)
 rotation = Vector3(0.14, -0.3, 0.5)
 mesh = SubResource("Mesh_scapula")
@@ -314,11 +331,13 @@ mesh = SubResource("Mesh_scapula")
 position = Vector3(0, 0.02, -0.4)
 
 [node name="NeckVertebraA" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot"]
+visible = false
 position = Vector3(0, -0.005, -0.07)
 rotation = Vector3(0.1, 0.06, 0)
 mesh = SubResource("Mesh_neck_vertebra")
 
 [node name="NeckVertebraB" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot"]
+visible = false
 position = Vector3(0.004, -0.02, -0.15)
 rotation = Vector3(0.16, -0.05, 0.04)
 mesh = SubResource("Mesh_neck_vertebra")
@@ -327,26 +346,31 @@ mesh = SubResource("Mesh_neck_vertebra")
 position = Vector3(0, -0.035, -0.22)
 
 [node name="Skull" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot"]
+visible = false
 position = Vector3(0, 0, -0.075)
 scale = Vector3(1, 0.94, 1.32)
 mesh = SubResource("Mesh_skull")
 
 [node name="Brow" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot"]
+visible = false
 position = Vector3(0, 0.055, -0.145)
 rotation = Vector3(0.34, 0, 0.03)
 mesh = SubResource("Mesh_brow")
 
 [node name="EyeSeamLeft" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot"]
+visible = false
 position = Vector3(-0.062, 0.012, -0.166)
 rotation = Vector3(0.1, 0.24, -0.42)
 mesh = SubResource("Mesh_eye_seam")
 
 [node name="EyeSeamRight" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot"]
+visible = false
 position = Vector3(0.062, 0.01, -0.164)
 rotation = Vector3(0.1, -0.24, 0.42)
 mesh = SubResource("Mesh_eye_seam")
 
 [node name="MouthCavity" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot"]
+visible = false
 position = Vector3(0, -0.052, -0.135)
 mesh = SubResource("Mesh_mouth_cavity")
 
@@ -354,21 +378,25 @@ mesh = SubResource("Mesh_mouth_cavity")
 position = Vector3(0, -0.048, -0.045)
 
 [node name="Jaw" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot/JawPivot"]
+visible = false
 position = Vector3(0, -0.03, -0.075)
 rotation = Vector3(0.1, 0, 0)
 mesh = SubResource("Mesh_jaw")
 
 [node name="ToothA" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot/JawPivot"]
+visible = false
 position = Vector3(-0.034, 0.004, -0.126)
 rotation = Vector3(-0.12, 0.3, -0.08)
 mesh = SubResource("Mesh_tooth")
 
 [node name="ToothB" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot/JawPivot"]
+visible = false
 position = Vector3(0, 0.006, -0.134)
 rotation = Vector3(-0.14, -0.4, 0.05)
 mesh = SubResource("Mesh_tooth")
 
 [node name="ToothC" type="MeshInstance3D" parent="VisualRoot/BodyPivot/NeckPivot/HeadPivot/JawPivot"]
+visible = false
 position = Vector3(0.034, 0.003, -0.124)
 rotation = Vector3(-0.11, 0.22, 0.09)
 mesh = SubResource("Mesh_tooth")
@@ -377,6 +405,7 @@ mesh = SubResource("Mesh_tooth")
 position = Vector3(0, 0.01, 0.48)
 
 [node name="Tail" type="MeshInstance3D" parent="VisualRoot/BodyPivot/TailPivot"]
+visible = false
 position = Vector3(0, -0.01, 0.15)
 rotation = Vector3(1.5708, 0, 0)
 mesh = SubResource("Mesh_tail")
@@ -385,6 +414,7 @@ mesh = SubResource("Mesh_tail")
 position = Vector3(0, -0.02, 0.3)
 
 [node name="TailTip" type="MeshInstance3D" parent="VisualRoot/BodyPivot/TailPivot/TailTipPivot"]
+visible = false
 position = Vector3(0, -0.015, 0.18)
 rotation = Vector3(1.5708, 0, 0)
 mesh = SubResource("Mesh_tail_tip")
@@ -395,10 +425,12 @@ mesh = SubResource("Mesh_tail_tip")
 position = Vector3(-0.145, 0.06, -0.27)
 
 [node name="Upper" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft"]
+visible = false
 position = Vector3(0, -0.21, 0)
 mesh = SubResource("Mesh_upper_limb")
 
 [node name="Joint" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft"]
+visible = false
 position = Vector3(0, -0.42, 0)
 mesh = SubResource("Mesh_joint")
 
@@ -406,10 +438,12 @@ mesh = SubResource("Mesh_joint")
 position = Vector3(0, -0.42, 0)
 
 [node name="Lower" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft/LowerPivot"]
+visible = false
 position = Vector3(0, -0.19, 0)
 mesh = SubResource("Mesh_lower_limb")
 
 [node name="Wrist" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft/LowerPivot"]
+visible = false
 position = Vector3(0, -0.38, 0)
 mesh = SubResource("Mesh_wrist")
 
@@ -417,20 +451,24 @@ mesh = SubResource("Mesh_wrist")
 position = Vector3(0, -0.39, 0)
 
 [node name="Palm" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.02, -0.02)
 mesh = SubResource("Mesh_palm")
 
 [node name="FingerA" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(-0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, 0.24)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerB" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.12, -0.062)
 rotation = Vector3(0.46, 0, 0)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerC" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, -0.24)
 mesh = SubResource("Mesh_finger")
@@ -439,10 +477,12 @@ mesh = SubResource("Mesh_finger")
 position = Vector3(0.145, 0.06, -0.27)
 
 [node name="Upper" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight"]
+visible = false
 position = Vector3(0, -0.21, 0)
 mesh = SubResource("Mesh_upper_limb")
 
 [node name="Joint" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight"]
+visible = false
 position = Vector3(0, -0.42, 0)
 mesh = SubResource("Mesh_joint")
 
@@ -450,10 +490,12 @@ mesh = SubResource("Mesh_joint")
 position = Vector3(0, -0.42, 0)
 
 [node name="Lower" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight/LowerPivot"]
+visible = false
 position = Vector3(0, -0.19, 0)
 mesh = SubResource("Mesh_lower_limb")
 
 [node name="Wrist" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight/LowerPivot"]
+visible = false
 position = Vector3(0, -0.38, 0)
 mesh = SubResource("Mesh_wrist")
 
@@ -461,20 +503,24 @@ mesh = SubResource("Mesh_wrist")
 position = Vector3(0, -0.39, 0)
 
 [node name="Palm" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.02, -0.02)
 mesh = SubResource("Mesh_palm")
 
 [node name="FingerA" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, -0.24)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerB" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.12, -0.062)
 rotation = Vector3(0.46, 0, 0)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerC" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/FrontRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(-0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, 0.24)
 mesh = SubResource("Mesh_finger")
@@ -483,10 +529,12 @@ mesh = SubResource("Mesh_finger")
 position = Vector3(-0.135, 0.035, 0.31)
 
 [node name="Upper" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft"]
+visible = false
 position = Vector3(0, -0.21, 0)
 mesh = SubResource("Mesh_upper_limb")
 
 [node name="Joint" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft"]
+visible = false
 position = Vector3(0, -0.42, 0)
 mesh = SubResource("Mesh_joint")
 
@@ -494,10 +542,12 @@ mesh = SubResource("Mesh_joint")
 position = Vector3(0, -0.42, 0)
 
 [node name="Lower" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft/LowerPivot"]
+visible = false
 position = Vector3(0, -0.19, 0)
 mesh = SubResource("Mesh_lower_limb")
 
 [node name="Wrist" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft/LowerPivot"]
+visible = false
 position = Vector3(0, -0.38, 0)
 mesh = SubResource("Mesh_wrist")
 
@@ -505,20 +555,24 @@ mesh = SubResource("Mesh_wrist")
 position = Vector3(0, -0.39, 0)
 
 [node name="Palm" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.02, -0.02)
 mesh = SubResource("Mesh_palm")
 
 [node name="FingerA" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(-0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, 0.24)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerB" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.12, -0.062)
 rotation = Vector3(0.46, 0, 0)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerC" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackLeft/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, -0.24)
 mesh = SubResource("Mesh_finger")
@@ -527,10 +581,12 @@ mesh = SubResource("Mesh_finger")
 position = Vector3(0.135, 0.035, 0.31)
 
 [node name="Upper" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight"]
+visible = false
 position = Vector3(0, -0.21, 0)
 mesh = SubResource("Mesh_upper_limb")
 
 [node name="Joint" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight"]
+visible = false
 position = Vector3(0, -0.42, 0)
 mesh = SubResource("Mesh_joint")
 
@@ -538,10 +594,12 @@ mesh = SubResource("Mesh_joint")
 position = Vector3(0, -0.42, 0)
 
 [node name="Lower" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight/LowerPivot"]
+visible = false
 position = Vector3(0, -0.19, 0)
 mesh = SubResource("Mesh_lower_limb")
 
 [node name="Wrist" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight/LowerPivot"]
+visible = false
 position = Vector3(0, -0.38, 0)
 mesh = SubResource("Mesh_wrist")
 
@@ -549,20 +607,24 @@ mesh = SubResource("Mesh_wrist")
 position = Vector3(0, -0.39, 0)
 
 [node name="Palm" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.02, -0.02)
 mesh = SubResource("Mesh_palm")
 
 [node name="FingerA" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, -0.24)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerB" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(0, -0.12, -0.062)
 rotation = Vector3(0.46, 0, 0)
 mesh = SubResource("Mesh_finger")
 
 [node name="FingerC" type="MeshInstance3D" parent="VisualRoot/BodyPivot/Limbs/BackRight/LowerPivot/HandPivot"]
+visible = false
 position = Vector3(-0.03, -0.115, -0.055)
 rotation = Vector3(0.42, 0, 0.24)
 mesh = SubResource("Mesh_finger")

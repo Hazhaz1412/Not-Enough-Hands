@@ -422,6 +422,11 @@ var _player_airborne: Dictionary = {}
 @onready var tail_tip_pivot: Node3D = $VisualRoot/BodyPivot/TailPivot/TailTipPivot
 @onready var skull: MeshInstance3D = $VisualRoot/BodyPivot/NeckPivot/HeadPivot/Skull
 @onready var drip: GPUParticles3D = $VisualRoot/Drip
+## The imported body's own walk cycle. It ships exactly one clip, so the gait is
+## carried by its rate rather than by clip selection - see _animate_crawl().
+@onready var model_animation: AnimationPlayer = get_node_or_null(
+	^"VisualRoot/BodyPivot/Model/AnimationPlayer"
+) as AnimationPlayer
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var crawl_audio: AudioStreamPlayer3D = $CrawlAudio
 @onready var chitter_audio: AudioStreamPlayer3D = $ChitterAudio
@@ -483,6 +488,7 @@ func _ready() -> void:
 		limb_lowers.append(lower)
 		limb_hands.append(lower.get_node('HandPivot') as Node3D)
 	_prepare_materials()
+	_start_model_animation()
 	_apply_rest_pose()
 	# Route markers are ordinary scene nodes, so they only exist once the rest of
 	# the level has entered the tree.
@@ -2380,6 +2386,19 @@ func _update_head_tracking(delta: float) -> void:
 	head_pivot.rotation.x = lerpf(head_pivot.rotation.x, deg_to_rad(18.0) + pitch, blend)
 
 
+## The body GLB carries a single looping walk. Started once here rather than
+## re-issued per frame, because AnimationPlayer.play() restarts a clip.
+func _start_model_animation() -> void:
+	if model_animation == null:
+		return
+	var clips := model_animation.get_animation_list()
+	if clips.is_empty():
+		return
+	var clip := StringName(clips[0])
+	model_animation.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
+	model_animation.play(clip)
+
+
 func _apply_rest_pose() -> void:
 	for index: int in limb_roots.size():
 		_pose_limb(index, 0.0, 0.0)
@@ -2408,6 +2427,10 @@ func _animate_crawl(delta: float, raw_speed_scale: float) -> void:
 	var counter := sin(crawl_phase + PI)
 	# The spine works side to side like something dragging itself, not up and
 	# down like something walking.
+	# The body's own legs are skinned now, so the gait reads off the clip's rate.
+	# The spine/tail/jaw motion below still layers on top of it.
+	if model_animation:
+		model_animation.speed_scale = speed_scale
 	body_pivot.rotation.y = stride * 0.14 * speed_scale
 	body_pivot.rotation.z = counter * 0.09 * speed_scale
 	body_pivot.position.y = absf(sin(crawl_phase * 2.0)) * 0.025 * speed_scale

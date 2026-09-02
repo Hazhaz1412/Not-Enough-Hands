@@ -90,32 +90,22 @@ func _expect_downed_after_kill(label: String) -> bool:
 	if downed.is_alive:
 		_fail("A downed player must not still count as alive.")
 		return false
-	# The scare has to be the one belonging to whatever caught them. Only the
-	# Huntsman's is JumpscareController's 3D lunge; every other ghost - and a
-	# null killer, which identifies as the statue - is drawn by the death
-	# screen in its scare-only mode. Playing the Midnight Grin for all of them
-	# was the bug this replaced, so "no death screen at all" is no longer the
-	# contract. What must still never happen is a Game Over behind it.
+	# Every catch now uses JumpscareController's 3D lunge. A real killer selects
+	# its own model; this test uses null because it owns the downed/life-state
+	# contract, while jumpscare_smoke owns the four identity variants. What must
+	# still never happen is a Game Over behind a downed scare.
 	var death_ui := downed.get_node("DeathUI")
 	var scare := downed.get_node("Jumpscare") as JumpscareController
-	if not scare.is_playing() and not bool(death_ui.get("scare_only")):
+	if not scare.is_playing():
 		_fail("The %s catch played no jumpscare on the way down." % label)
 		return false
-	if death_ui.get_node("GameOver").visible:
+	if death_ui.visible or bool(death_ui.get("scare_only")) \
+			or death_ui.get_node("GameOver").visible:
 		_fail("A downed player's jumpscare must not raise a Game Over behind it.")
 		return false
 	# Cleared here rather than left to run out, so the next catch is asked to
 	# start its own scare instead of inheriting this one still playing.
 	scare.cancel()
-	if bool(death_ui.get("scare_only")):
-		# Driven straight through impact -> jumpscare -> blackout: a scare-only
-		# run has to hand the screen back on its own, or a downed player spends
-		# their bleed-out looking at a black rectangle.
-		for i: int in 4:
-			death_ui._process(1.0)
-		if death_ui.visible or bool(death_ui.get("scare_only")):
-			_fail("A downed scare did not clear itself off the screen.")
-			return false
 	if death_ui.get_node("GameOver").visible:
 		_fail("A downed player's scare left a Game Over behind it.")
 		return false

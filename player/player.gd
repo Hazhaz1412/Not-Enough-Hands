@@ -276,7 +276,7 @@ var _active_breaker_minigame: Node = null
 ## client has had applied, echoed back to it so it can tell a stale snapshot
 ## from one that actually reflects its last report.
 var _last_applied_toilet_report: int = 0
-var _pending_hunter_killer: Node3D = null
+var _pending_jumpscare_killer: Node3D = null
 
 var _minigame_ghost_safety_locks: int = 0
 var _minigame_ghost_release_remaining: float = 0.0
@@ -401,7 +401,7 @@ func _ready() -> void:
 		_flashlight_base_angle = flashlight.spot_angle
 		_apply_flashlight_state()
 	if jumpscare:
-		jumpscare.jumpscare_finished.connect(_on_hunter_jumpscare_finished)
+		jumpscare.jumpscare_finished.connect(_on_ghost_jumpscare_finished)
 
 
 func _exit_tree() -> void:
@@ -1595,7 +1595,7 @@ func _present_death(ghost: Node3D) -> void:
 	if _encounter_belongs_elsewhere():
 		_show_death.rpc_id(owner_peer_id, _scene_path_of(ghost))
 		return
-	if _start_hunter_jumpscare(ghost):
+	if _start_ghost_jumpscare(ghost):
 		return
 	if death_ui.has_method("show_jumpscare"):
 		death_ui.call("show_jumpscare", ghost)
@@ -1607,12 +1607,10 @@ func _present_death(ghost: Node3D) -> void:
 ## Being caught with a teammate still standing: the same scare a death gets, and
 ## no Game Over behind it - the one still standing is the only difference.
 ##
-## It has to be the scare belonging to *whatever caught you*. This used to play
-## JumpscareController unconditionally, which renders one asset, the Midnight
-## Grin - so a statue, a crawler or the darkness taking somebody down in a
-## four-player run all ended with the Huntsman's face in their camera. Only the
-## Huntsman goes through the 3D controller; every other ghost already has a
-## portrait and a sting on the death screen, which now has a scare-only mode.
+## It has to be the scare belonging to *whatever caught you*. The controller
+## now installs the actual Statue, Crawler, Darkness or Hunter presentation
+## subtree in its isolated 3D viewport, so no catch falls back to a mismatched
+## vector portrait or to the Huntsman's face.
 ##
 ## Routed to the victim's own machine for the reason _present_death() is: this
 ## is first-person, and the kill is resolved on the server. The controller is
@@ -1620,19 +1618,18 @@ func _present_death(ghost: Node3D) -> void:
 ## body's `_physics_process` would also stop `_update_downed()` on a listen
 ## server, freezing the bleed-out clock and any revive already in progress for
 ## the length of the sequence. There is nothing to hold still anyway: a downed
-## player cannot move. And no `_pending_hunter_killer` is set, which is what
-## keeps _on_hunter_jumpscare_finished() from raising the Game Over card.
+## player cannot move. And no `_pending_jumpscare_killer` is set, which is what
+## keeps _on_ghost_jumpscare_finished() from raising the Game Over card.
 func _present_downed_jumpscare(ghost: Node3D) -> void:
 	if _encounter_belongs_elsewhere():
 		_show_downed_jumpscare.rpc_id(owner_peer_id, _scene_path_of(ghost))
 		return
 	if not is_local_player():
 		return
-	if death_ui.has_method("show_downed_scare") \
-		and bool(death_ui.call("show_downed_scare", ghost)):
+	if jumpscare and jumpscare.play_jumpscare(null, ghost):
 		return
-	if jumpscare:
-		jumpscare.play_jumpscare(null)
+	if death_ui.has_method("show_downed_scare"):
+		death_ui.call("show_downed_scare", ghost)
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -1652,15 +1649,12 @@ func _show_death(ghost_path: NodePath) -> void:
 	_present_death(_scene_node(ghost_path) as Node3D)
 
 
-func _start_hunter_jumpscare(ghost: Node3D) -> bool:
+func _start_ghost_jumpscare(ghost: Node3D) -> bool:
 	if not is_instance_valid(ghost) or not jumpscare:
 		return false
-	if not ghost.is_in_group("hunter_ghosts") \
-			and "hunter" not in ghost.name.to_lower():
-		return false
-	_pending_hunter_killer = ghost
-	if not jumpscare.play_jumpscare(self):
-		_pending_hunter_killer = null
+	_pending_jumpscare_killer = ghost
+	if not jumpscare.play_jumpscare(self, ghost):
+		_pending_jumpscare_killer = null
 		return false
 	var active_scene := get_tree().current_scene
 	if active_scene \
@@ -1672,12 +1666,12 @@ func _start_hunter_jumpscare(ghost: Node3D) -> bool:
 
 ## The controller emits this for every jumpscare it plays, and cancel() emits it
 ## too - a run that was cut short is not a death. Only one that came through
-## _start_hunter_jumpscare() has a killer waiting, so only that one raises the
+## _start_ghost_jumpscare() has a killer waiting, so only that one raises the
 ## Game Over; without the guard a killer-less finish raised one anyway, and
 ## death_screen.gd captions a null killer as the statue.
-func _on_hunter_jumpscare_finished() -> void:
-	var killer := _pending_hunter_killer
-	_pending_hunter_killer = null
+func _on_ghost_jumpscare_finished() -> void:
+	var killer := _pending_jumpscare_killer
+	_pending_jumpscare_killer = null
 	if killer == null:
 		return
 	if death_ui.has_method("show_game_over"):

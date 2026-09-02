@@ -64,15 +64,9 @@ func _in_network_session() -> bool:
 	return manager != null and bool(manager.get("session_active"))
 
 
-## Being caught with a teammate left standing: the same face, the same sting,
-## and no Game Over behind it.
-##
-## This exists because the downed scare used to be the Huntsman's 3D lunge no
-## matter what had actually caught you - the statue, the crawler, the darkness,
-## all of them ended with the Midnight Grin in your face. Every one of those
-## already has a portrait and a sting here; the downed path simply never came
-## through this screen. Returns false for the Huntsman, whose scare is 3D and
-## belongs to JumpscareController, so the caller keeps that route.
+## Legacy presentation fallback for a catch with a teammate left standing.
+## The normal path is now JumpscareController's identity-correct 3D model for
+## every killer; this remains available if that isolated viewport cannot start.
 func show_downed_scare(ghost: Node3D) -> bool:
 	if _identify_killer(ghost) == &"hunter":
 		return false
@@ -142,9 +136,9 @@ func show_jumpscare(ghost: Node3D) -> void:
 		get_tree().paused = true
 
 
-## Hunter owns its 3D attack in JumpscareController. Once that overlay has
-## finished, reveal only the Game Over card; never replay this screen's legacy
-## drawn portrait underneath it.
+## Every lethal ghost now owns its 3D attack in JumpscareController. Once that
+## overlay has finished, reveal only the Game Over card; never replay this
+## screen's legacy drawn portrait underneath it.
 func show_game_over(ghost: Node3D) -> void:
 	if phase != Phase.IDLE:
 		return

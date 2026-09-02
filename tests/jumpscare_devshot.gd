@@ -1,14 +1,21 @@
 extends SceneTree
 
 ## Diagnostic, not a test: renders the jumpscare at a handful of instants so the
-## face can be looked at rather than argued about - the one acceptance criterion
-## tests/jumpscare_smoke.gd can only measure geometrically.
+## face can be looked at rather than argued about - the acceptance criterion
+## tests/jumpscare_smoke.gd can only measure structurally/geometrically.
 ##
 ## Run it with a real window, since headless has no renderer:
 ##   godot --script tests/jumpscare_devshot.gd --path .
-## PNGs land in `user://jumpscare_shots` and the path is printed at the end.
+## PNGs land in `.godot/jumpscare_shots/<variant>` and the path is printed.
 
-const OUT_DIR := "user://jumpscare_shots"
+const OUT_DIR := "res://.godot/jumpscare_shots"
+const VARIANTS: Array[StringName] = [&"hunter", &"statue", &"crawler", &"darkness"]
+const KILLER_SCENES := {
+	&"hunter": preload("res://ghosts/hunter_ghost.tscn"),
+	&"statue": preload("res://ghosts/statue_ghost.tscn"),
+	&"crawler": preload("res://ghosts/crawler_ghost.tscn"),
+	&"darkness": preload("res://ghosts/darkness_ghost.tscn"),
+}
 
 ## Fractions of the whole sequence to capture.
 const SHOTS := [
@@ -26,7 +33,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	DirAccess.make_dir_recursive_absolute(OUT_DIR)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
 
 	# A lit room behind the overlay, so the transparent viewport is proved to
 	# composite over the world instead of onto a convenient black screen.
@@ -50,9 +57,24 @@ func _run() -> void:
 	root.add_child(camera)
 	camera.make_current()
 
+	for variant: StringName in VARIANTS:
+		await _capture_variant(variant)
+
+	print("shots in %s" % ProjectSettings.globalize_path(OUT_DIR))
+	quit()
+
+
+func _capture_variant(variant: StringName) -> void:
+	var variant_dir := "%s/%s" % [OUT_DIR, variant]
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(variant_dir))
+	var killer := (KILLER_SCENES[variant] as PackedScene).instantiate() as Node3D
+	killer.set_process(false)
+	killer.set_physics_process(false)
+	root.add_child(killer)
+	await process_frame
 	var controller := JumpscareController.new()
 	root.add_child(controller)
-	controller.play_jumpscare(null)
+	controller.play_jumpscare(null, killer)
 	# This script owns the clock; the sequence must not also advance itself
 	# while the renderer is being waited on.
 	controller.set_process(false)
@@ -72,8 +94,10 @@ func _run() -> void:
 		controller.debug_step(0.0)
 		await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png("%s/%s.png" % [OUT_DIR, shot[0]])
-		print("wrote %s at t=%.2fs" % [shot[0], target])
+		root.get_texture().get_image().save_png("%s/%s.png" % [variant_dir, shot[0]])
+		print("wrote %s/%s at t=%.2fs" % [variant, shot[0], target])
 
-	print("shots in %s" % ProjectSettings.globalize_path(OUT_DIR))
-	quit()
+	controller.cancel()
+	controller.queue_free()
+	killer.queue_free()
+	await process_frame

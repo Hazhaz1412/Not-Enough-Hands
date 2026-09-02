@@ -228,12 +228,11 @@ func _run() -> void:
 	quit()
 
 
-## The wiring, end to end: the Huntsman's lethal hit is the only thing that
-## plays this. The door encounter is checked here too, as the thing that must
+## The wiring, end to end: every lethal ghost plays this with its own real 3D
+## identity. The door encounter is checked here too, as the thing that must
 ## *not* play it - winning a repel used to fire a jumpscare as a flourish, which
 ## read as being killed at the moment of victory. The encounter itself belongs
-## to tests/door_ghost_minigame_smoke.gd; what is checked here is only what does
-## and does not reach the controller.
+## to tests/door_ghost_minigame_smoke.gd; this owns the presentation routing.
 func _check_trigger() -> bool:
 	var player_scene := load("res://player/player.tscn") as PackedScene
 	if player_scene == null:
@@ -277,15 +276,13 @@ func _check_trigger() -> bool:
 	player.queue_free()
 	await physics_frame
 
-	# The one thing that does reach it: the Huntsman's lethal hit. The
-	# group is the discriminator, so a stand-in in it is enough - this is a
-	# check of the wiring, not of the Huntsman, which
-	# tests/hunter_slash_smoke.gd and tests/hunter_ghost_smoke.gd own.
+	# Every lethal ghost reaches it. Group-only stand-ins deliberately carry no
+	# visuals, forcing the controller to extract each source scene's exact visual
+	# subtree rather than accidentally duplicating the Huntsman for all four.
 	var huntsman := Node3D.new()
+	huntsman.name = "HunterKiller"
 	huntsman.add_to_group(&"hunter_ghosts")
 	root.add_child(huntsman)
-	var bystander := Node3D.new()
-	root.add_child(bystander)
 	await physics_frame
 
 	# A fresh body per kill: a death screen only presents one death, so a player
@@ -302,8 +299,8 @@ func _check_trigger() -> bool:
 	if not victim_jumpscare.is_playing():
 		_fail("The Huntsman landed a lethal hit and no jumpscare played.")
 		return false
-	# The whole point of the Huntsman's route: its face plays alone. The death
-	# screen has taken the death but drawn none of it.
+	# The 3D face plays alone. The death screen has taken the death but drawn none
+	# of its old vector portrait.
 	if victim_death_ui.visible:
 		_fail("The old death screen was on screen underneath the Huntsman's jumpscare.")
 		return false
@@ -327,23 +324,90 @@ func _check_trigger() -> bool:
 		_fail("The jumpscare finished and Game Over never came up behind it.")
 		return false
 
-	# Any other killer keeps the death screen's own drawn jumpscare.
-	var other_victim := player_scene.instantiate()
-	root.add_child(other_victim)
-	await physics_frame
-	other_victim.call("kill_by_ghost", bystander)
-	await physics_frame
-	if (other_victim.get_node("Jumpscare") as JumpscareController).is_playing():
-		_fail("A jumpscare played for a kill that was not the Huntsman's.")
-		return false
-	if not (other_victim.get_node("DeathUI") as CanvasLayer).visible:
-		_fail("A non-Huntsman kill lost the death screen it has always had.")
-		return false
+	var variants: Array[Dictionary] = [
+		{
+			"name": &"statue",
+			"group": &"statue_ghosts",
+			"source": "res://ghosts/statue_ghost.tscn::Model",
+			"signature": NodePath(),
+		},
+		{
+			"name": &"crawler",
+			"group": &"crawler_ghosts",
+			"source": "res://ghosts/crawler_ghost.tscn::VisualRoot",
+			"signature": NodePath("BodyPivot/NeckPivot/HeadPivot/Skull"),
+		},
+		{
+			"name": &"darkness",
+			"group": &"darkness_ghosts",
+			"source": "res://ghosts/darkness_ghost.tscn::AnimatedModel",
+			"signature": NodePath(),
+		},
+	]
+	for row: Dictionary in variants:
+		if not await _check_killer_variant(player_scene, row):
+			return false
 
 	huntsman.queue_free()
-	bystander.queue_free()
 	victim.queue_free()
-	other_victim.queue_free()
+	await physics_frame
+	return true
+
+
+func _check_killer_variant(player_scene: PackedScene, row: Dictionary) -> bool:
+	var killer := Node3D.new()
+	killer.name = "%sKiller" % String(row["name"]).capitalize()
+	killer.add_to_group(StringName(row["group"]))
+	root.add_child(killer)
+	var victim := player_scene.instantiate()
+	root.add_child(victim)
+	await physics_frame
+
+	var scare := victim.get_node("Jumpscare") as JumpscareController
+	var death_ui := victim.get_node("DeathUI") as CanvasLayer
+	victim.call("kill_by_ghost", killer)
+	await physics_frame
+	var expected := StringName(row["name"])
+	if not scare.is_playing():
+		_fail("The %s kill did not start a 3D jumpscare." % expected)
+		return false
+	if scare.get_killer_variant() != expected:
+		_fail("The %s kill rendered the %s identity." % [expected, scare.get_killer_variant()])
+		return false
+	if scare.get_model_source() != String(row["source"]):
+		_fail("The %s jumpscare did not use its gameplay model source." % expected)
+		return false
+	if death_ui.visible or int(death_ui.get("phase")) != 0:
+		_fail("The old drawn %s portrait appeared underneath its 3D model." % expected)
+		return false
+
+	var model := scare.get_child(0).get_node(
+		"VisualRoot/Viewport/World/GhostAnchor/ModelRoot/Model"
+	) as Node3D
+	if model == null:
+		_fail("The %s jumpscare contains no 3D model." % expected)
+		return false
+	var signature := NodePath(row["signature"])
+	if not signature.is_empty() and model.get_node_or_null(signature) == null:
+		_fail("The %s jumpscare does not contain its recognisable head hierarchy." % expected)
+		return false
+	if model.find_children("*", "MeshInstance3D", true, false).is_empty():
+		_fail("The %s jumpscare model contains no real render mesh." % expected)
+		return false
+
+	scare.set_process(false)
+	scare.debug_step(scare.get_total_duration())
+	await physics_frame
+	if scare.is_playing() or not death_ui.visible \
+			or not bool(death_ui.call("is_showing_game_over")):
+		_fail("The %s 3D scare did not hand off cleanly to Game Over." % expected)
+		return false
+	if death_ui.get("killer_variant") != expected:
+		_fail("The %s Game Over card lost its killer identity." % expected)
+		return false
+
+	killer.queue_free()
+	victim.queue_free()
 	await physics_frame
 	return true
 

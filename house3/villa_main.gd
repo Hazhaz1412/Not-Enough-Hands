@@ -376,7 +376,33 @@ func _finish_network_smoke() -> void:
 		)
 		get_tree().quit(1)
 		return
+	var local_control_owners := 0
+	for node: Node in get_tree().get_nodes_in_group(&"players"):
+		var player := node as CharacterBody3D
+		if not player:
+			continue
+		var local := bool(player.call("is_local_player"))
+		var camera := player.get_node_or_null("CameraPivot/Camera3D") as Camera3D
+		if local:
+			local_control_owners += 1
+			if camera == null or not camera.current \
+				or not player.is_processing_unhandled_input():
+				push_error("Network smoke local player did not own camera/input.")
+				get_tree().quit(1)
+				return
+		elif (camera and camera.current) or player.is_processing_unhandled_input():
+			push_error("Network smoke remote replica stole camera/input.")
+			get_tree().quit(1)
+			return
+	if local_control_owners != 1:
+		push_error(
+			"Network smoke expected exactly one local control owner, got %d."
+			% local_control_owners
+		)
+		get_tree().quit(1)
+		return
 	print("NETWORK_ROSTER_REPLICATED count=%d" % replicated_players)
+	print("NETWORK_LOCAL_CONTROL_GUARDED peer=%d" % multiplayer.get_unique_id())
 	get_tree().quit()
 
 

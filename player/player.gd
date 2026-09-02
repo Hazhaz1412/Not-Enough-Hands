@@ -370,6 +370,11 @@ var _local_input_sequence: int = 0
 var _last_processed_input_sequence: int = -1
 var _prediction_history: Dictionary = {}
 var _pending_reconciliation := Vector3.ZERO
+## A bare Alt press is the in-game mouse-release shortcut. Delaying the toggle
+## until release lets Alt+Tab cancel it before the window loses focus; otherwise
+## returning to the game leaves the cursor visible and mouse-look appears dead.
+var _alt_toggle_pending: bool = false
+var _mouse_was_captured_before_focus_loss: bool = false
 ## Life-cycle changes use a reliable side channel in addition to the regular
 ## 20 Hz snapshot. The revision keeps a late, pre-death unreliable packet from
 ## briefly putting a player back on their feet after the reliable update.
@@ -409,10 +414,29 @@ func _exit_tree() -> void:
 		_release_remote_encounter_target()
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		# Do not let the Alt half of Alt+Tab become a delayed mouse-release
+		# shortcut when the application regains focus.
+		_alt_toggle_pending = false
+		_mouse_was_captured_before_focus_loss = (
+			is_inside_tree()
+			and is_local_player()
+			and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
+		)
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		if _mouse_was_captured_before_focus_loss \
+			and is_inside_tree() and is_local_player() \
+			and DisplayServer.get_name() != "headless":
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		_mouse_was_captured_before_focus_loss = false
+
+
 ## Status visuals keep ticking while a minigame temporarily disables this
 ## body's physics. That makes a seven-second Toilet Ghost stun seven seconds
 ## of real gameplay time, including the brief camera-release transition.
 func _process(delta: float) -> void:
+	_guard_local_control_ownership()
 	if not _is_network_session() or multiplayer.is_server() or is_local_player():
 		_update_toilet_ghost_stun(delta)
 	if is_local_player():
@@ -601,8 +625,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# get to look around, they just lose everything below the look block.
 	if not is_alive and not is_downed and not is_spectator:
 		return
-	if _is_alt_toggle_event(event):
-		toggle_mouse_capture()
+	if _handle_mouse_capture_shortcut(event):
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
@@ -657,8 +680,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func is_local_player() -> bool:
-	if not _is_network_session() or owner_peer_id <= 0:
+	if not _is_network_session():
 		return true
+	# An identity-less network replica is never allowed to own input or a camera.
+	# Spawn code normally assigns this before add_child(), but treating zero as
+	# local turns any malformed/transient replica into a second local player.
+	if owner_peer_id <= 0 or not _network_is_reachable():
+		return false
 	return multiplayer.get_unique_id() == owner_peer_id
 
 
@@ -666,9 +694,6 @@ func _configure_player_presentation() -> void:
 	var local := is_local_player()
 	var camera := camera_pivot.get_node_or_null("Camera3D") as Camera3D
 	if camera:
-		# Player scenes are instantiated once per peer. Their cameras deliberately
-		# start non-current in player.tscn so a remote replica cannot steal the
-		# viewport while its parent is still entering the tree.
 		if local:
 			camera.make_current()
 		else:
@@ -699,6 +724,22 @@ func _configure_player_presentation() -> void:
 		# explicit methods, so a client copy needs no second physics simulation.
 		bladder.set_physics_process(not _is_network_session() or multiplayer.is_server())
 	set_process_unhandled_input(local)
+
+
+## Camera selection is viewport-global and can be changed by another Camera3D
+## after this player's one-time _ready() configuration. Reassert the invariant
+## from _process() (which keeps running during camera-owning minigames): only
+## the owning replica is current and only it receives look input.
+func _guard_local_control_ownership() -> void:
+	var local := is_local_player()
+	var camera := camera_pivot.get_node_or_null("Camera3D") as Camera3D
+	if camera:
+		if local and not camera.current:
+			camera.make_current()
+		elif not local and camera.current:
+			camera.current = false
+	if is_processing_unhandled_input() != local:
+		set_process_unhandled_input(local)
 
 
 func _is_network_session() -> bool:
@@ -1227,13 +1268,26 @@ func get_toggled_mouse_mode(current_mode: Input.MouseMode) -> Input.MouseMode:
 	)
 
 
-func _is_alt_toggle_event(event: InputEvent) -> bool:
-	return (
-		event is InputEventKey
-		and event.pressed
-		and not event.echo
-		and (event.keycode == KEY_ALT or event.physical_keycode == KEY_ALT)
-	)
+func _handle_mouse_capture_shortcut(event: InputEvent) -> bool:
+	var key_event := event as InputEventKey
+	if key_event == null:
+		return false
+	var is_alt := key_event.keycode == KEY_ALT or key_event.physical_keycode == KEY_ALT
+	if is_alt:
+		if key_event.echo:
+			return true
+		if key_event.pressed:
+			_alt_toggle_pending = true
+		else:
+			if _alt_toggle_pending:
+				toggle_mouse_capture()
+			_alt_toggle_pending = false
+		return true
+	# Bare Alt remains the shortcut, while Alt combined with Tab or any other key
+	# is an operating-system/app chord and must leave mouse capture untouched.
+	if key_event.pressed and _alt_toggle_pending:
+		_alt_toggle_pending = false
+	return false
 
 
 func get_interaction_target() -> Node:

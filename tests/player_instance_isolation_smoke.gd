@@ -41,6 +41,56 @@ func _run() -> void:
 	if not local_camera.current or remote_camera.current:
 		return _fail("A remote player replica stole the local viewport camera.")
 
+	# Network identity zero is a transient/malformed replica, never an alias for
+	# the local peer. Letting it through gives it input and makes its Camera3D an
+	# automatic viewport fallback candidate.
+	var unowned_player := player_scene.instantiate() as CharacterBody3D
+	unowned_player.name = "Player_Unowned"
+	unowned_player.owner_peer_id = 0
+	world.add_child(unowned_player)
+	unowned_player.set_physics_process(false)
+	var unowned_camera := unowned_player.get_node("CameraPivot/Camera3D") as Camera3D
+	if unowned_player.is_local_player() or unowned_camera.current \
+		or unowned_player.is_processing_unhandled_input():
+		return _fail("An identity-less network replica was allowed to own local controls.")
+
+	# Simulate a viewport fallback selecting a remote camera after startup. The
+	# continuous ownership guard must disable it and put the local camera back.
+	remote_camera.make_current()
+	if not remote_camera.current:
+		return _fail("The camera-theft setup did not make the remote camera current.")
+	remote_player.call("_guard_local_control_ownership")
+	local_player.call("_guard_local_control_ownership")
+	if not local_camera.current or remote_camera.current:
+		return _fail("The runtime ownership guard did not recover the local camera.")
+
+	# Movement is body-relative, so the current camera and owning body must share
+	# their horizontal right axis. If a PI-rotated remote camera is current this
+	# exact check flips sign, matching the reported A/right and D/left symptom.
+	local_player.rotation.y = 0.63
+	remote_player.rotation.y = local_player.rotation.y + PI
+	var a_direction := (
+		local_player.global_basis * Vector3.LEFT
+	).slide(Vector3.UP).normalized()
+	var screen_right := local_camera.global_basis.x.slide(Vector3.UP).normalized()
+	if a_direction.dot(screen_right) > -0.99:
+		return _fail("The owning camera and A/D movement basis are no longer aligned.")
+
+	# Alt alone still toggles capture, but the Alt part of Alt+Tab is cancelled so
+	# coming back to the game cannot leave mouse-look silently released.
+	var alt_press := InputEventKey.new()
+	alt_press.keycode = KEY_ALT
+	alt_press.pressed = true
+	if not bool(local_player.call("_handle_mouse_capture_shortcut", alt_press)) \
+		or not bool(local_player.get("_alt_toggle_pending")):
+		return _fail("Bare Alt did not arm the mouse-capture shortcut.")
+	var tab_press := InputEventKey.new()
+	tab_press.keycode = KEY_TAB
+	tab_press.pressed = true
+	local_player.call("_handle_mouse_capture_shortcut", tab_press)
+	if bool(local_player.get("_alt_toggle_pending")):
+		return _fail("Alt+Tab was mistaken for the bare-Alt mouse shortcut.")
+
 	# The owning camera sits inside its own rig. That rig must live exclusively
 	# on the private body layer or its head and arms still match the flashlight
 	# through world layer 1 and cast a broken silhouette across the whole beam.
@@ -167,7 +217,8 @@ func _run() -> void:
 	manager.set("session_active", false)
 	print(
 		"Player instance isolation smoke test passed: crouch capsules are unique, "
-		+ "remote replicas cannot steal the local camera but are audible walking; "
+		+ "remote/unowned replicas cannot steal the local camera, A/D stays aligned, "
+		+ "remote players remain audible walking; "
 		+ "reconciliation stays bounded."
 	)
 	quit()

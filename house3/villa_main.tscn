@@ -49,6 +49,7 @@
 [ext_resource type="Script" uid="uid://jn7ag6n0ntnt" path="res://house3/villa_exterior.gd" id="80_villa_exterior"]
 [ext_resource type="PackedScene" path="res://power/main_breaker.tscn" id="81_main_breaker"]
 [ext_resource type="Script" uid="uid://cnexyjcl1jds3" path="res://items/totem_ritual.gd" id="82_totem_ritual"]
+[ext_resource type="PackedScene" path="res://ui/pause_menu.tscn" id="83_pause"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_villa"]
 sky_top_color = Color(0.22, 0.38, 0.58, 1)
@@ -79349,3 +79350,5 @@ stuck_nudge_seconds = 0.6
 
 [node name="TotemRitual" type="Node" parent="." unique_id=1310419746]
 script = ExtResource("82_totem_ritual")
+
+[node name="PauseMenu" parent="." instance=ExtResource("83_pause")]

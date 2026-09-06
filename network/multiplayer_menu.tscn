@@ -75,7 +75,7 @@ horizontal_alignment = 1
 [node name="Subtitle" type="Label" parent="Center/Panel/Margin/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.48, 0.6, 0.62, 1)
-text = "MULTIPLAYER · LOCAL DEVELOPMENT"
+text = "CHƠI MẠNG · 2-4 NGƯỜI · BIỆT THỰ VÀNH ĐAI"
 horizontal_alignment = 1
 
 [node name="Spacer" type="Control" parent="Center/Panel/Margin/Content"]
@@ -103,13 +103,14 @@ size_flags_horizontal = 3
 
 [node name="Label" type="Label" parent="Center/Panel/Margin/Content/AddressRow/AddressColumn"]
 layout_mode = 2
-text = "ĐỊA CHỈ SERVER"
+text = "ĐỊA CHỈ PHÒNG"
 
 [node name="AddressEdit" type="LineEdit" parent="Center/Panel/Margin/Content/AddressRow/AddressColumn"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "127.0.0.1"
+placeholder_text = "890e3824ae79.pr.edgegap.net:31157"
 
 [node name="PortColumn" type="VBoxContainer" parent="Center/Panel/Margin/Content/AddressRow"]
 custom_minimum_size = Vector2(110, 0)
@@ -128,6 +129,28 @@ max_value = 65535.0
 value = 7777.0
 allow_greater = false
 allow_lesser = false
+
+[node name="PasteColumn" type="VBoxContainer" parent="Center/Panel/Margin/Content/AddressRow"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Center/Panel/Margin/Content/AddressRow/PasteColumn"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.6, 0.62, 1)
+text = "CLIPBOARD"
+
+[node name="PasteButton" type="Button" parent="Center/Panel/Margin/Content/AddressRow/PasteColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "DÁN"
+
+[node name="AddressHint" type="Label" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.42, 0.55, 0.57, 1)
+theme_override_font_sizes/font_size = 13
+text = "Dán nguyên chuỗi host:port cũng được - cổng sẽ tự tách sang ô bên phải."
+autowrap_mode = 2
 
 [node name="Buttons" type="HBoxContainer" parent="Center/Panel/Margin/Content"]
 layout_mode = 2
@@ -154,7 +177,13 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.72, 0.73, 1)
-text = "Tạo server trên máy này hoặc kết nối 127.0.0.1 để test hai client."
+text = "Tạo phòng trên máy này, hoặc dán địa chỉ phòng của bạn bè rồi bấm VÀO PHÒNG."
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
+
+[node name="BackButton" type="Button" parent="Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "◀  VỀ MENU CHÍNH"

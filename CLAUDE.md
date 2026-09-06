@@ -8,7 +8,7 @@ Godot 4.7 first-person horror prototype ("Not Enough Hands"). GDScript only, no 
 
 ## Running & testing
 
-- Open `project.godot` in Godot 4.7. `main.tscn` (House2 map) is the default `run/main_scene`; run it with F5/F6.
+- Open `project.godot` in Godot 4.7. `ui/main_menu.tscn` is the default `run/main_scene` (F5); it routes CHƠI ĐƠN to `main.tscn` (House2) and CHƠI MẠNG to the multiplayer menu, whose lobby loads the villa. Either map can still be run on its own with F6 - `main.tscn` for House2, `house3/villa_main.tscn` for the villa.
 - The second map lives beside it: run `house3/villa_main.tscn` directly (F6) to play the villa instead of House2.
 - Tests are standalone headless smoke scripts under `tests/`, **not** GdUnit — each is a `SceneTree` subclass with `_initialize()` → `_run()` → `_fail(msg)`/`quit()`. Run one at a time:
   ```
@@ -156,6 +156,40 @@ A run ends exactly one way: `NetworkManager.end_run()`, which clears `game_start
 **An RPC can land on a node that has already left the tree.** Ending a run swaps the villa for the lobby, and for the frame or two that takes, every peer is still streaming input — none of them has heard yet. Those packets arrive at a body being freed with the map, where `Node.multiplayer` and `get_tree()` are both **null**, so a guard opening with `multiplayer.is_server()` is the crash rather than the check. Every RPC entry point on a node that lives *inside a map scene* (`player/player.gd`, `power/main_breaker.gd` — the `network/` ones are autoloads and always in the tree) must therefore open with `Player._network_is_reachable()` or its equivalent; `tests/detached_player_rpc_smoke.gd` pins it.
 
 Beware that **a debug build hides this entire class of bug**: it reports "Cannot call method 'x' on a null value" and carries on, so every headless smoke test passes, while the exported server dereferences null and dies with SIGSEGV (exit 139). When a bug reproduces only on Edgegap, export a release build and run it locally before reading any more code — `--script` does not work in an exported binary, so drive it as a real `--server` + `--join=` pair instead.
+
+### The front end: menu, settings, pause
+
+`ui/main_menu.tscn` is the boot scene and the only hub. Its corridor diorama is
+built in code from `BoxMesh`es (`_build_corridor()`) rather than authored from
+the art packs, deliberately: the one scene that must never fail to load cannot
+depend on an asset that might be missing. Routing is *not* done here - the menu
+calls `NetworkManager.start_single_player()` / `MENU_SCENE`, because that
+autoload already owns every other scene change (`SOLO_SCENE` = House2,
+`GAME_SCENE` = the villa, `MAIN_MENU_SCENE`, `LOBBY_SCENE`, `MENU_SCENE`).
+
+`GameSettings` (autoload, `ui/game_settings.gd`) is the only place a setting
+lives: `DEFAULTS` is the whole list, each key applied by `_apply_setting()` the
+moment it changes and again on boot, and persisted to `user://settings.cfg`.
+**Every key has a consumer** - DisplayServer, AudioServer, InputMap, or
+`player/player.gd`'s `_apply_comfort_settings()` (sensitivity, invert-Y, FOV,
+head bob). Adding an option means adding the consumer first, then one line in
+`DEFAULTS` and one row in `ui/settings_menu.gd`. Rebinds are stored as keycodes
+and button indices, never as serialized `InputEvent` objects, and `_apply_binds()`
+always rebuilds from the events `project.godot` shipped so a cleared bind cannot
+leave an action empty. `player.gd` reads it through `/root/GameSettings`, not by
+identifier - same reason `WorldNet` exists.
+
+`ui/pause_menu.tscn` is instanced in both maps and answers ESC. It pauses the
+tree **only outside a network session** (the same `session_active` check
+`player.gd` makes before pausing for a death), it declines the press while a
+minigame is up (a minigame owns the camera and answers ESC itself), and it only
+un-pauses a pause it caused, so ESC over a death screen cannot resume a lost run.
+
+`network/multiplayer_menu.gd::parse_address()` is what makes
+`890e3824ae79.pr.edgegap.net:31157` work as a single field: it splits scheme,
+path, quotes and bracketed IPv6 down to `{host, port}`, and a `port` of 0 means
+"the text carried none, leave the port box alone". It runs on paste (detected as
+a length jump of 2+ characters), on focus-out, on Enter, and again on join.
 
 ### Dev tools
 

@@ -15,6 +15,7 @@
 [ext_resource type="PackedScene" uid="uid://c6mhmj2asxc5g" path="res://assets/electrical_devices/light_switch.glb" id="12_dg77c"]
 [ext_resource type="PackedScene" path="res://items/totem_brazier.tscn" id="13_brazier"]
 [ext_resource type="Script" path="res://items/totem_ritual.gd" id="14_totem_ritual"]
+[ext_resource type="PackedScene" path="res://ui/pause_menu.tscn" id="15_pause"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 sky_top_color = Color(0.22, 0.38, 0.58, 1)
@@ -210,3 +211,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 0, -2.2)
 
 [node name="TotemRitual" type="Node" parent="."]
 script = ExtResource("14_totem_ritual")
+
+[node name="PauseMenu" parent="." instance=ExtResource("15_pause")]

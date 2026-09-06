@@ -15,6 +15,10 @@ const SERVER_PEER_ID := 1
 const GAME_SCENE := "res://house3/villa_main.tscn"
 const LOBBY_SCENE := "res://network/multiplayer_lobby.tscn"
 const MENU_SCENE := "res://network/multiplayer_menu.tscn"
+const MAIN_MENU_SCENE := "res://ui/main_menu.tscn"
+## Single player is House2; the villa is the four-player map. Both scene paths
+## live here because this is already the one node that changes scenes.
+const SOLO_SCENE := "res://main.tscn"
 
 var session_active: bool = false
 var dedicated_server: bool = false
@@ -93,6 +97,34 @@ func join_game(address: String, display_name: String, port: int = DEFAULT_PORT) 
 	session_port = port
 	status_changed.emit("Đang kết nối %s:%d…" % [resolved_address, port])
 	return OK
+
+
+## Single player is the *absence* of a session, not a session of one: every
+## world system already reads "no network layer" as authority, so this only has
+## to make sure no old session is still open when the map loads.
+func start_single_player() -> void:
+	leave_session(false)
+	local_display_name = sanitize_display_name(get_saved_display_name())
+	status_changed.emit("Đang tải Nhà nhỏ…")
+	get_tree().change_scene_to_file.call_deferred(SOLO_SCENE)
+
+
+## The way back out of a map or a lobby, whichever mode it was.
+func return_to_main_menu() -> void:
+	leave_session(false)
+	get_tree().paused = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	get_tree().change_scene_to_file.call_deferred(MAIN_MENU_SCENE)
+
+
+## The name the player last chose in the settings screen. Reached by path
+## instead of by identifier for the same reason `player/player.gd` reaches this
+## node that way: the `--script` smoke tests are not the project's main loop.
+func get_saved_display_name() -> String:
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings == null:
+		return local_display_name
+	return str(settings.call("get_setting", "player/name", local_display_name))
 
 
 func leave_session(return_to_menu: bool = true) -> void:

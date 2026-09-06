@@ -1,0 +1,126 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://ui/pause_menu.gd" id="1_pause"]
+[ext_resource type="PackedScene" path="res://ui/settings_menu.tscn" id="2_settings"]
+
+[sub_resource type="StyleBoxFlat" id="StylePanel"]
+bg_color = Color(0.014, 0.022, 0.028, 0.97)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.22, 0.42, 0.44, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.7)
+shadow_size = 30
+
+[sub_resource type="StyleBoxFlat" id="StyleButton"]
+bg_color = Color(0.06, 0.16, 0.18, 1)
+border_width_left = 3
+border_color = Color(0.15, 0.45, 0.46, 1)
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+content_margin_left = 20.0
+content_margin_top = 12.0
+content_margin_right = 20.0
+content_margin_bottom = 12.0
+
+[node name="PauseMenu" type="CanvasLayer"]
+visible = false
+layer = 100
+script = ExtResource("1_pause")
+
+[node name="Root" type="Control" parent="."]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.002, 0.004, 0.006, 0.78)
+
+[node name="Center" type="CenterContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Root/Center"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StylePanel")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 26
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 26
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.94, 0.94, 1)
+theme_override_font_sizes/font_size = 28
+text = "TẠM DỪNG"
+
+[node name="StateLabel" type="Label" parent="Root/Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.65, 0.67, 1)
+theme_override_font_sizes/font_size = 14
+text = "Đã dừng."
+autowrap_mode = 2
+
+[node name="ResumeButton" type="Button" parent="Root/Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleButton")
+text = "TIẾP TỤC"
+alignment = 0
+
+[node name="SettingsButton" type="Button" parent="Root/Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleButton")
+text = "CÀI ĐẶT"
+alignment = 0
+
+[node name="MenuButton" type="Button" parent="Root/Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleButton")
+text = "VỀ MENU CHÍNH"
+alignment = 0
+
+[node name="QuitButton" type="Button" parent="Root/Center/Panel/Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleButton")
+text = "THOÁT TRÒ CHƠI"
+alignment = 0
+
+[node name="SettingsMenu" parent="Root" instance=ExtResource("2_settings")]
+unique_name_in_owner = true
+visible = false

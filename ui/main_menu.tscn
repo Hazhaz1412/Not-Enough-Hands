@@ -1,0 +1,253 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://ui/main_menu.gd" id="1_menu"]
+[ext_resource type="Shader" path="res://ui/horror_overlay.gdshader" id="2_grade"]
+[ext_resource type="PackedScene" path="res://ui/settings_menu.tscn" id="3_settings"]
+
+[sub_resource type="Environment" id="Environment_menu"]
+background_mode = 0
+background_color = Color(0.004, 0.006, 0.009, 1)
+ambient_light_source = 1
+ambient_light_color = Color(0.16, 0.2, 0.26, 1)
+ambient_light_energy = 0.26
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.09, 0.12, 0.16, 1)
+fog_light_energy = 0.6
+fog_density = 0.075
+adjustment_enabled = true
+adjustment_brightness = 0.95
+adjustment_contrast = 1.12
+adjustment_saturation = 0.72
+
+[sub_resource type="ShaderMaterial" id="Material_grade"]
+shader = ExtResource("2_grade")
+shader_parameter/chromatic_aberration = 0.004
+shader_parameter/grain_strength = 0.075
+shader_parameter/sharpen_strength = 0.2
+shader_parameter/vignette_strength = 0.46
+shader_parameter/contrast = 1.32
+shader_parameter/contrast_pivot = 0.2
+shader_parameter/saturation = 0.62
+shader_parameter/danger_intensity = 0.0
+shader_parameter/pulse_strength = 0.02
+
+[sub_resource type="StyleBoxFlat" id="StyleButton"]
+bg_color = Color(0.043, 0.075, 0.086, 0.85)
+border_width_left = 3
+border_color = Color(0.13, 0.4, 0.42, 1)
+content_margin_left = 22.0
+content_margin_top = 14.0
+content_margin_right = 18.0
+content_margin_bottom = 14.0
+
+[sub_resource type="StyleBoxFlat" id="StyleButtonHover"]
+bg_color = Color(0.086, 0.18, 0.19, 0.95)
+border_width_left = 3
+border_color = Color(0.45, 0.92, 0.86, 1)
+content_margin_left = 26.0
+content_margin_top = 14.0
+content_margin_right = 18.0
+content_margin_bottom = 14.0
+
+[node name="MainMenu" type="Node3D"]
+script = ExtResource("1_menu")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_menu")
+
+[node name="CameraRig" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.62, 4.6)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+current = true
+fov = 62.0
+near = 0.05
+
+[node name="Torch" type="SpotLight3D" parent="CameraRig/Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.26, -0.22, 0)
+light_color = Color(0.85, 0.92, 1, 1)
+light_energy = 4.6
+shadow_enabled = true
+spot_range = 16.0
+spot_angle = 31.0
+spot_angle_attenuation = 1.4
+
+[node name="Grade" type="CanvasLayer" parent="."]
+
+[node name="GradeRect" type="ColorRect" parent="Grade"]
+material = SubResource("Material_grade")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="UI" type="CanvasLayer" parent="."]
+layer = 2
+
+[node name="Root" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layout" type="MarginContainer" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 86
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 86
+theme_override_constants/margin_bottom = 40
+
+[node name="Columns" type="HBoxContainer" parent="UI/Root/Layout"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Left" type="VBoxContainer" parent="UI/Root/Layout/Columns"]
+custom_minimum_size = Vector2(470, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Kicker" type="Label" parent="UI/Root/Layout/Columns/Left"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.72, 0.7, 1)
+theme_override_font_sizes/font_size = 15
+text = "KINH DỊ HỢP TÁC  ·  1-4 NGƯỜI  ·  MỘT ĐÊM"
+
+[node name="Title" type="Label" parent="UI/Root/Layout/Columns/Left"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 0.95, 1)
+theme_override_font_sizes/font_size = 62
+text = "NOT ENOUGH"
+
+[node name="TitleSecond" type="Label" parent="UI/Root/Layout/Columns/Left"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.87, 0.83, 1)
+theme_override_font_sizes/font_size = 62
+text = "HANDS"
+
+[node name="Rule" type="ColorRect" parent="UI/Root/Layout/Columns/Left"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.18, 0.45, 0.45, 0.75)
+
+[node name="Tagline" type="Label" parent="UI/Root/Layout/Columns/Left"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.68, 0.7, 1)
+theme_override_font_sizes/font_size = 16
+text = "Ba con ma. Một cái nhà. Không đủ tay để giữ tất cả."
+autowrap_mode = 2
+
+[node name="Spacer" type="Control" parent="UI/Root/Layout/Columns/Left"]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Buttons" type="VBoxContainer" parent="UI/Root/Layout/Columns/Left"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SoloButton" type="Button" parent="UI/Root/Layout/Columns/Left/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+theme_override_styles/focus = SubResource("StyleButtonHover")
+theme_override_styles/pressed = SubResource("StyleButtonHover")
+text = "CHƠI ĐƠN"
+alignment = 0
+
+[node name="OnlineButton" type="Button" parent="UI/Root/Layout/Columns/Left/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+theme_override_styles/focus = SubResource("StyleButtonHover")
+theme_override_styles/pressed = SubResource("StyleButtonHover")
+text = "CHƠI MẠNG"
+alignment = 0
+
+[node name="SettingsButton" type="Button" parent="UI/Root/Layout/Columns/Left/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+theme_override_styles/focus = SubResource("StyleButtonHover")
+theme_override_styles/pressed = SubResource("StyleButtonHover")
+text = "CÀI ĐẶT"
+alignment = 0
+
+[node name="QuitButton" type="Button" parent="UI/Root/Layout/Columns/Left/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+theme_override_styles/focus = SubResource("StyleButtonHover")
+theme_override_styles/pressed = SubResource("StyleButtonHover")
+text = "THOÁT"
+alignment = 0
+
+[node name="Right" type="Control" parent="UI/Root/Layout/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Footer" type="HBoxContainer" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 86.0
+offset_top = -56.0
+offset_right = -86.0
+offset_bottom = -26.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="Version" type="Label" parent="UI/Root/Footer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.3, 0.4, 0.42, 1)
+theme_override_font_sizes/font_size = 13
+text = "NOT ENOUGH HANDS  ·  BẢN THỬ NGHIỆM"
+
+[node name="Detail" type="Label" parent="UI/Root/Footer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.52, 0.53, 1)
+theme_override_font_sizes/font_size = 13
+text = "Di chuột để rọi đèn"
+horizontal_alignment = 2
+
+[node name="SettingsMenu" parent="UI" instance=ExtResource("3_settings")]
+unique_name_in_owner = true
+visible = false

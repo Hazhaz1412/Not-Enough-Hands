@@ -380,6 +380,10 @@ var _mouse_was_captured_before_focus_loss: bool = false
 ## briefly putting a player back on their feet after the reliable update.
 var _life_state_revision: int = 0
 var _last_received_life_state_revision: int = -1
+## Head bob as this scene authored it, captured before any settings multiplier
+## is applied so repeated applications cannot compound.
+var _base_head_bob: Vector2 = Vector2.ZERO
+var _invert_look_y: bool = false
 
 func _ready() -> void:
 	# Interior doors query this group for a light physical push. Keeping the
@@ -394,6 +398,15 @@ func _ready() -> void:
 	_network_yaw = rotation.y
 	_network_pitch = camera_pivot.rotation.x
 	_configure_player_presentation()
+	_apply_comfort_settings()
+	# Connected on every body, not just the local one: authority can settle after
+	# this _ready(), and re-applying a setting on a replica changes nothing it
+	# uses. Missing the signal on the one player holding the mouse would.
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings:
+		settings.connect(&"changed", func(_key: String, _value: Variant) -> void:
+			_apply_comfort_settings()
+		)
 	if is_local_player() and DisplayServer.get_name() != "headless":
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if interact_ray:
@@ -407,6 +420,35 @@ func _ready() -> void:
 		_apply_flashlight_state()
 	if jumpscare:
 		jumpscare.jumpscare_finished.connect(_on_ghost_jumpscare_finished)
+
+
+## Mouse feel, field of view and head bob belong to whoever is holding the
+## mouse, so they come from the settings autoload; the exports above are only
+## the defaults it starts from. Reached by path rather than by name for the same
+## reason `WorldNet` exists - the `--script` smoke tests load this file outside
+## the project's main loop, where an autoload identifier need not resolve.
+func _apply_comfort_settings() -> void:
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings == null:
+		return
+	if _base_head_bob == Vector2.ZERO:
+		_base_head_bob = Vector2(head_bob_horizontal, head_bob_vertical)
+	mouse_sensitivity = float(
+		settings.call(&"get_number", "controls/mouse_sensitivity", mouse_sensitivity)
+	)
+	_invert_look_y = bool(settings.call(&"get_flag", "controls/invert_look_y", false))
+	var bob := float(settings.call(&"get_number", "gameplay/head_bob", 1.0))
+	head_bob_horizontal = _base_head_bob.x * bob
+	head_bob_vertical = _base_head_bob.y * bob
+	var camera := camera_pivot.get_node_or_null("Camera3D") as Camera3D
+	if camera:
+		# _update_bladder_pressure() is the only line that writes camera.fov,
+		# and it subtracts from this base - so the chosen FOV has to land here
+		# rather than on the camera, or the next frame erases it.
+		_camera_base_fov = float(
+			settings.call(&"get_number", "gameplay/field_of_view", camera.fov)
+		)
+		camera.fov = _camera_base_fov
 
 
 func _exit_tree() -> void:
@@ -641,7 +683,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 		# Rotate camera vertically, clamped to pitch_clamp_min/max (+-90
 		# degrees normally, narrower while a minigame constrains it).
-		camera_pivot.rotate_x(-event.relative.y * mouse_sensitivity)
+		var pitch_direction := 1.0 if _invert_look_y else -1.0
+		camera_pivot.rotate_x(pitch_direction * event.relative.y * mouse_sensitivity)
 		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, pitch_clamp_min, pitch_clamp_max)
 
 	# A body on the floor cannot reach a door handle, and a spectator has no

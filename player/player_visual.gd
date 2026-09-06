@@ -41,6 +41,9 @@ const LOCAL_BODY_VISUAL_LAYER := 20
 @export var camera_clear_distance: float = 0.95
 @export var downed_pose_speed: float = 3.5
 
+## Lobby-only screen scale for the shared name tag - see _setup_lobby_preview().
+const LOBBY_TAG_PIXEL_SIZE := 0.0014
+
 @onready var character: Node3D = $Character
 @onready var skeleton: Skeleton3D = $"Character/simple_character/GeneralSkeleton"
 @onready var body_mesh: MeshInstance3D = $"Character/simple_character/GeneralSkeleton/body"
@@ -110,17 +113,23 @@ func _setup_lobby_preview() -> void:
 	_preview_time = float(preview_slot_index) * 1.37
 	if not name_tag:
 		return
+	# fixed_size measures a Label3D in fractions of the screen rather than in
+	# metres, so `font_size * pixel_size` is the whole story - and this rig is
+	# shared with gameplay, which is read at a 70 degree fov. The lineup renders
+	# at 42 degrees inside its own sub-viewport, where the same numbers land a
+	# name nearly three times as large.
+	name_tag.pixel_size = LOBBY_TAG_PIXEL_SIZE
 	# Keep long user-entered names inside their own slot when all four players
 	# are present. Short names retain the large lobby type.
 	name_tag.font_size = clampi(
-		int(280.0 / float(maxi(preview_display_name.length(), 1))),
-		14,
-		34
+		int(320.0 / float(maxi(preview_display_name.length(), 1))),
+		20,
+		40
 	)
 	name_tag.outline_size = 8
 	_preview_state_tag = name_tag.duplicate() as Label3D
 	_preview_state_tag.name = "ReadyTag"
-	_preview_state_tag.position.y += 0.7
+	_preview_state_tag.position.y += 0.4
 	_preview_state_tag.font_size = 20
 	_preview_state_tag.outline_size = 6
 	_preview_state_tag.text = "READY" if preview_ready else "NOT READY"

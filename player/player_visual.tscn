@@ -17,4 +17,4 @@ outline_size = 12
 modulate = Color(0.78, 0.93, 0.94, 1)
 outline_modulate = Color(0.01, 0.018, 0.024, 0.9)
 fixed_size = true
-pixel_size = 0.005
+pixel_size = 0.001

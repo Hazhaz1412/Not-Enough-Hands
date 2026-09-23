@@ -89,6 +89,14 @@ static func report_holder(item: Node, peer_id: int) -> void:
 		replicator.call(&"report_holder", item, peer_id)
 
 
+## A carried item has no transform row, so state such as trap arming and stick
+## durability is sent explicitly rather than waiting for the fast channel.
+static func report_entity_state(item: Node) -> void:
+	var replicator := _node(REPLICATOR_PATH)
+	if replicator != null and replicator.has_method(&"report_entity_state"):
+		replicator.call(&"report_entity_state", item)
+
+
 ## Plays a sound everybody in the house is supposed to hear.
 ##
 ## Ghost audio splits the same way ghost movement does. The loops a body makes

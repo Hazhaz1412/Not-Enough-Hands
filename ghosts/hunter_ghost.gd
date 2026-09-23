@@ -303,6 +303,7 @@ const WALK_SPEED_THRESHOLD := 0.15
 const ONE_SHOT_CLIPS := [&"Attack", &"Skill 3"]
 
 var state: HunterState = HunterState.DORMANT
+var tactical_snare_remaining: float = 0.0
 ## True from the moment it steps through a breach until it steps back out.
 var inside_house: bool = false
 ## Every breach was sealed behind it. It is in here until dawn now.
@@ -477,6 +478,15 @@ func _physics_process(delta: float) -> void:
 	_enforce_chase_override()
 	if update_hearing:
 		_listen(delta)
+	if tactical_snare_remaining > 0.0:
+		tactical_snare_remaining = maxf(tactical_snare_remaining - delta, 0.0)
+		velocity = Vector3.ZERO
+		# The Huntsman keeps sight and hearing while snared; the trap buys space,
+		# not safety, and it deliberately never receives a knockback.
+		if update_threat:
+			_update_player_threat()
+		_update_presentation(delta)
+		return
 
 	match state:
 		HunterState.ENTERING:
@@ -528,6 +538,16 @@ func report_noise(position: Vector3, loudness: float, _source: Node = null) -> v
 		return
 	_noise_lead = position
 	_has_noise_lead = true
+
+
+## Public tactical seam for a trap. It is intentionally not a new HunterState:
+## perception remains live and the existing state resumes unchanged afterward.
+func apply_snare(duration: float) -> bool:
+	if not WorldNet.is_world_authority() or not active or not inside_house:
+		return false
+	tactical_snare_remaining = maxf(tactical_snare_remaining, duration)
+	velocity = Vector3.ZERO
+	return true
 
 
 func _listen(_delta: float) -> void:

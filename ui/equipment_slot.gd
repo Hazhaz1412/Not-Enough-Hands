@@ -10,6 +10,7 @@ const SELECTED_SIZE := Vector2(112, 112)
 
 @onready var number_label: Label = $Content/NumberLabel
 @onready var item_label: Label = $Content/ItemLabel
+@onready var detail_label: Label = $Content/DetailLabel
 
 var _style_normal: StyleBoxFlat
 var _style_selected: StyleBoxFlat
@@ -33,7 +34,18 @@ func set_selected(selected: bool) -> void:
 	add_theme_stylebox_override("panel", _style_selected if selected else _style_normal)
 
 
-## `item_display_name` empty means the slot is unoccupied. No item icon
-## system exists yet, so the item's initial stands in as a placeholder.
+## `item_display_name` empty means the slot is unoccupied. The compact name is
+## the current inventory icon substitute; tactical durability is shown below.
 func set_item_name(item_display_name: String) -> void:
-	item_label.text = item_display_name.left(1).to_upper() if item_display_name != "" else ""
+	item_label.text = item_display_name.left(10).to_upper() if item_display_name != "" else ""
+	if detail_label:
+		detail_label.text = ""
+
+
+func set_item(item: Node) -> void:
+	var item_display_name := ""
+	if item:
+		item_display_name = item.display_name if "display_name" in item else item.name
+	set_item_name(item_display_name)
+	if detail_label and item and "durability" in item:
+		detail_label.text = str(int(item.get("durability"))) + "/3"

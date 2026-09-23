@@ -48,6 +48,8 @@ enum CrawlerState {
 	# ordinal is what WorldReplicator ships to clients, so inserting a value in
 	# the middle would renumber every state above it mid-session.
 	LEAVING,
+	# Tactical stun is appended for the same replication-compatibility reason.
+	STUNNED,
 }
 
 signal state_changed(new_state: CrawlerState)
@@ -331,6 +333,8 @@ signal containment_recovered(escaped_position: Vector3, recovered_position: Vect
 @export var crawl_audio_min_speed: float = 0.35
 
 var state: CrawlerState = CrawlerState.PATROL
+var tactical_stun_remaining: float = 0.0
+var _state_before_tactical_stun: CrawlerState = CrawlerState.PATROL
 var surface_normal: Vector3 = Vector3.UP
 var has_surface: bool = false
 var airborne_time: float = 0.0
@@ -536,6 +540,17 @@ func _physics_process(delta: float) -> void:
 		_update_hidden(delta)
 		_update_player_threat()
 		return
+	if state == CrawlerState.STUNNED:
+		tactical_stun_remaining = maxf(tactical_stun_remaining - delta, 0.0)
+		velocity = Vector3.ZERO
+		_update_player_threat()
+		_update_presentation(delta)
+		if tactical_stun_remaining <= 0.0:
+			var resume := _state_before_tactical_stun
+			if resume == CrawlerState.POUNCE_WINDUP or resume == CrawlerState.POUNCING:
+				resume = CrawlerState.RECOVERING
+			_set_state(resume)
+		return
 
 	if _is_inside_containment(global_position):
 		last_contained_position = global_position
@@ -568,6 +583,8 @@ func _physics_process(delta: float) -> void:
 			_update_leaving(delta)
 		CrawlerState.RETREATING:
 			_update_retreating(delta)
+		CrawlerState.STUNNED:
+			velocity = Vector3.ZERO
 		CrawlerState.DORMANT:
 			velocity = Vector3.ZERO
 
@@ -583,6 +600,20 @@ func _physics_process(delta: float) -> void:
 
 func set_dev_attack_suspended(suspended: bool) -> void:
 	_set_attack_suspension(suspended, director_attacks_suspended)
+
+
+## Public tactical seam. The item never reaches into Crawler state; it asks for
+## a temporary interruption and this brain decides how to safely resume.
+func apply_stun(duration: float) -> bool:
+	if not WorldNet.is_world_authority() or not active \
+		or state == CrawlerState.DORMANT or state == CrawlerState.HIDDEN:
+		return false
+	if state != CrawlerState.STUNNED:
+		_state_before_tactical_stun = state
+		_set_state(CrawlerState.STUNNED)
+	tactical_stun_remaining = maxf(tactical_stun_remaining, duration)
+	velocity = Vector3.ZERO
+	return true
 
 
 ## The director's hold on this ghost's attacks. Held separately from the lock
@@ -603,6 +634,7 @@ func is_engaged() -> bool:
 		CrawlerState.SEARCHING,
 		CrawlerState.POUNCE_WINDUP,
 		CrawlerState.POUNCING,
+		CrawlerState.STUNNED,
 	]
 
 

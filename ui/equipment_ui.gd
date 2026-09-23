@@ -39,10 +39,16 @@ func _bind_to_player() -> void:
 
 func _on_slot_changed(index: int) -> void:
 	var item: Node = _equipment.get_slot_item(index)
-	var item_display_name := ""
-	if item:
-		item_display_name = item.display_name if "display_name" in item else item.name
-	_slots[index].set_item_name(item_display_name)
+	_slots[index].set_item(item)
+
+
+func _process(_delta: float) -> void:
+	# Durability changes without altering an equipment slot, so refresh the small
+	# presentational detail while a tactical tool is held.
+	if _equipment == null:
+		return
+	for index in _slots.size():
+		_slots[index].set_item(_equipment.get_slot_item(index))
 
 
 func _on_selection_changed(selected_index: int) -> void:

@@ -25,14 +25,20 @@ mono_crash.*.json
 ehthumbs.db
 Thumbs.db
 desktop.ini
+.directory
 
 # Editor/IDE
 .vscode/
 .idea/
+.fleet/
+.zed/
+.history/
 *.swp
 *.swo
 *~
 *.bak
+*.sublime-project
+*.sublime-workspace
 
 # Export folders
 /export/
@@ -81,12 +87,36 @@ desktop.ini
 /assets/audio/freesound_community-concrete-footsteps-6752.mp3
 /assets/audio/freesound_community-concrete-footsteps-6752.mp3.import
 
-# AI configs
+# AI and Agent tooling
 .ai/
+.codegraph/
+.agents/
+.gemini/
+.claude/
 
 # Local Godot AI integration (do not commit)
 /addons/godot_ai/
 /godot-ai-LICENSE.txt
 
+# Python & Tool caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# 3D DCC & Blender backups
+*.blend1
+*.blend2
+*.blend@*
+
+# Godot logs & temp files
+*.log
+godot.log
+*.uid.tmp
+
 # Stray installers: GitHub rejects any file over 100 MB
 /assets/**/*.exe
+

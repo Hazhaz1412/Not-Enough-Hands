@@ -430,6 +430,15 @@ theme_override_font_sizes/font_size = 22
 text = ""
 horizontal_alignment = 1
 
+[node name="DetailLabel" type="Label" parent="EquipmentUI/SlotsRow/Slot2/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.67, 0.3, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = ""
+horizontal_alignment = 1
+
 [node name="Slot1" type="PanelContainer" parent="EquipmentUI/SlotsRow"]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
@@ -457,6 +466,15 @@ theme_override_colors/font_color = Color(0.86, 0.9, 0.92, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
 theme_override_font_sizes/font_size = 22
+text = ""
+horizontal_alignment = 1
+
+[node name="DetailLabel" type="Label" parent="EquipmentUI/SlotsRow/Slot1/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.67, 0.3, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 11
 text = ""
 horizontal_alignment = 1
 

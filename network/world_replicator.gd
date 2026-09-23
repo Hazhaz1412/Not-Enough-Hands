@@ -251,6 +251,16 @@ func report_holder(item: Node, peer_id: int) -> void:
 	_set_entity_holder.rpc(id, peer_id)
 
 
+func report_entity_state(item: Node) -> void:
+	if not NetworkManager.session_active or not NetworkManager.is_world_authority():
+		return
+	if item == null or not item.has_method(&"get_replication_state"):
+		return
+	var id := int(_entity_ids.get(item.get_instance_id(), 0))
+	if id != 0:
+		_set_entity_state.rpc(id, item.call(&"get_replication_state") as Array)
+
+
 ## Plays one sound on every peer, at the node that owns it.
 ##
 ## A client runs no ghost brain, so every sound a brain fires - the Huntsman's
@@ -474,7 +484,10 @@ func _collect_entities() -> Array:
 		if node.is_in_group(&"hostile_ghosts"):
 			out.append([id] + _ghost_state(node))
 			continue
-		out.append([id, node.global_position, node.rotation.y])
+		var custom_state: Array = []
+		if node.has_method(&"get_replication_state"):
+			custom_state = node.call(&"get_replication_state") as Array
+		out.append([id, node.global_position, node.rotation.y, custom_state])
 	return out
 
 
@@ -576,6 +589,9 @@ func _build_snapshot() -> Dictionary:
 		var node := _live_entity(id) as Node3D
 		if node == null:
 			continue
+		var custom_state: Array = []
+		if node.has_method(&"get_replication_state"):
+			custom_state = node.call(&"get_replication_state") as Array
 		spawned.append([
 			id,
 			str(_entity_scene.get(id, "")),
@@ -585,6 +601,7 @@ func _build_snapshot() -> Dictionary:
 			int(_holders.get(id, 0)),
 			str(node.name),
 			_ghost_state(node) if node.is_in_group(&"hostile_ghosts") else [],
+			custom_state,
 		])
 	return {
 		"entities": spawned,
@@ -636,6 +653,11 @@ func _sync_fast(ghosts: Array, entities: Array) -> void:
 		if row.size() == 3:
 			node.global_position = row[1]
 			node.rotation.y = row[2]
+		elif row.size() >= 4:
+			node.global_position = row[1]
+			node.rotation.y = row[2]
+			if node.has_method(&"apply_replication_state") and row[3] is Array:
+				node.call(&"apply_replication_state", row[3])
 
 
 ## Applies authored state by scene-relative identity, never by packet index.
@@ -880,6 +902,13 @@ func _set_entity_holder(id: int, peer_id: int) -> void:
 		holder.call(&"try_pick_up_item", item)
 
 
+@rpc("authority", "call_remote", "reliable")
+func _set_entity_state(id: int, state: Array) -> void:
+	var item := _live_entity(id)
+	if item and item.has_method(&"apply_replication_state"):
+		item.call(&"apply_replication_state", state)
+
+
 func _player_for_peer(peer_id: int) -> Node:
 	for node: Node in get_tree().get_nodes_in_group(&"players"):
 		if "owner_peer_id" in node and int(node.get("owner_peer_id")) == peer_id:
@@ -908,6 +937,10 @@ func _apply_snapshot(snapshot: Dictionary) -> void:
 			var entity := _live_entity(int(row[0])) as Node3D
 			if entity and entity.is_in_group(&"hostile_ghosts"):
 				_apply_ghost(entity, row[7])
+		if row.size() >= 9 and row[8] is Array:
+			var runtime_entity := _live_entity(int(row[0]))
+			if runtime_entity and runtime_entity.has_method(&"apply_replication_state"):
+				runtime_entity.call(&"apply_replication_state", row[8])
 	var ghosts: Array = snapshot.get("ghosts", [])
 	_apply_authored_ghosts(ghosts)
 	_apply_doors(snapshot.get("doors", []))

@@ -133,6 +133,9 @@ var _has_been_seen := false
 var _flashlight_focus_time := 0.0
 var _flashlight_player_count := 0
 var _is_dead := false
+## Tactical tools interrupt movement but do not end the Darkness encounter.
+## Keeping this separate from EncounterPhase preserves its warning/chase logic.
+var _tactical_stun_remaining := 0.0
 var _footstep_time_left := 0.0
 var _footstep_slice_left := 0.0
 
@@ -145,6 +148,7 @@ const FOOTSTEP_SLICE := 0.34
 func _ready() -> void:
 	super._ready()
 	add_to_group("darkness_ghosts")
+	add_to_group("hostile_ghosts")
 	_power_effect = get_node_or_null("DarknessEntityPowerEffect") as DarknessEntityPowerEffect
 	$NavigationAgent3D.path_desired_distance = stair_waypoint_tolerance
 	# NavigationAgent3D has avoidance_enabled = true in the scene, but avoidance
@@ -192,6 +196,11 @@ func _physics_process(delta: float) -> void:
 	if not _is_manifested or not WorldNet.is_world_authority():
 		return
 	if encounter_phase != EncounterPhase.CHASING:
+		velocity = Vector3.ZERO
+		play_idle()
+		return
+	if _tactical_stun_remaining > 0.0:
+		_tactical_stun_remaining = maxf(_tactical_stun_remaining - delta, 0.0)
 		velocity = Vector3.ZERO
 		play_idle()
 		return
@@ -307,6 +316,16 @@ func is_dead() -> bool:
 	return _is_dead
 
 
+## Shared tactical seam with Crawler: a trap holds the body for three seconds
+## and a stick strike holds it for 1.5, without cancelling the live blackout.
+func apply_stun(duration: float) -> bool:
+	if not WorldNet.is_world_authority() or not _is_manifested or _is_dead:
+		return false
+	_tactical_stun_remaining = maxf(_tactical_stun_remaining, duration)
+	velocity = Vector3.ZERO
+	return true
+
+
 ## True once any living player has seen this ghost during the current encounter.
 ## Until then it is immune to light and its hunt clock runs slowly.
 func has_been_seen() -> bool:
@@ -318,7 +337,7 @@ func get_replication_state() -> Array:
 	for zone: ElectricalZone in _encounter_zones:
 		if is_instance_valid(zone):
 			zone_ids.append(String(zone.zone_id))
-	return [encounter_phase, _warning_time_left, zone_ids, _is_dead]
+	return [encounter_phase, _warning_time_left, zone_ids, _is_dead, _tactical_stun_remaining]
 
 
 func apply_replication_state(state: Array) -> void:
@@ -331,6 +350,8 @@ func apply_replication_state(state: Array) -> void:
 	_warning_time_left = float(state[1])
 	if state.size() >= 4:
 		_is_dead = bool(state[3])
+	if state.size() >= 5:
+		_tactical_stun_remaining = float(state[4])
 	if changed:
 		_encounter_zones.clear()
 		for zone_id: String in incoming_ids:
@@ -621,7 +642,7 @@ func _try_step_up(horizontal_motion: Vector3) -> void:
 
 
 func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
-	if not _is_manifested or _moving_directly_on_stair:
+	if not _is_manifested or _moving_directly_on_stair or _tactical_stun_remaining > 0.0:
 		return
 	var delta := _pending_move_delta
 	velocity.x = move_toward(velocity.x, safe_velocity.x, acceleration * delta)

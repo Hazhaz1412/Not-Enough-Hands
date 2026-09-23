@@ -253,6 +253,7 @@ var _dev_vision_light: OmniLight3D
 var hunter_trap_source: Node3D
 
 @onready var camera_pivot: Node3D = $CameraPivot
+@onready var camera: Camera3D = $CameraPivot/Camera3D
 @onready var interact_ray: RayCast3D = $CameraPivot/Camera3D/InteractRay
 @onready var flashlight: SpotLight3D = $CameraPivot/Camera3D/Flashlight
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
@@ -705,6 +706,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_request_drop_item.rpc_id(NETWORK_SERVER_PEER_ID)
 		else:
 			_drop_selected_item()
+	if event.is_action_pressed("use_item"):
+		if _is_network_client():
+			_request_use_selected_item.rpc_id(NETWORK_SERVER_PEER_ID)
+		else:
+			_use_selected_item()
 	# No RPC of its own: the switch rides the input stream every peer already
 	# sends, so a press is felt locally on the frame it happens and reaches the
 	# authority on the next tick like movement does.
@@ -1406,6 +1412,12 @@ func _request_drop_item() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable")
+func _request_use_selected_item() -> void:
+	if _rpc_reached_authority() and _rpc_sender_owns_player():
+		_use_selected_item()
+
+
+@rpc("any_peer", "call_remote", "reliable")
 func _request_select_slot(slot_index: int) -> void:
 	if _rpc_reached_authority() and _rpc_sender_owns_player() and slot_index in [0, 1]:
 		equipment.select_slot(slot_index)
@@ -1430,6 +1442,43 @@ func _request_or_select_slot(slot_index: int) -> void:
 
 func _rpc_sender_owns_player() -> bool:
 	return _network_is_reachable() and multiplayer.get_remote_sender_id() == owner_peer_id
+
+
+## Item scripts own their effect. Player only exposes the selected inventory
+## seam and performs it on authority, just like interaction and item pickup.
+func _use_selected_item() -> bool:
+	var item := equipment.get_slot_item(equipment.selected_slot)
+	if item == null or not item.has_method(&"use"):
+		return false
+	return bool(item.call(&"use", self))
+
+
+func get_tactical_use_origin() -> Vector3:
+	return camera.global_position if camera else global_position + Vector3.UP * standing_camera_height
+
+
+func get_tactical_use_direction() -> Vector3:
+	return -camera.global_transform.basis.z if camera else -global_transform.basis.z
+
+
+func get_tactical_placement_position() -> Vector3:
+	var origin := get_tactical_use_origin()
+	var direction := get_tactical_use_direction().normalized()
+	var state := get_world_3d().direct_space_state
+	var excluded: Array[RID] = [get_rid()]
+	var query := PhysicsRayQueryParameters3D.create(
+		origin,
+		origin + direction * 2.4 + Vector3.DOWN * 2.0,
+		1,
+		excluded
+	)
+	var hit := state.intersect_ray(query)
+	if not hit.is_empty():
+		return hit["position"] as Vector3 + Vector3.UP * 0.06
+	var candidate := global_position + direction * 1.15 + Vector3.UP * 1.0
+	query = PhysicsRayQueryParameters3D.create(candidate, candidate + Vector3.DOWN * 2.5, 1, excluded)
+	hit = state.intersect_ray(query)
+	return (hit["position"] as Vector3 + Vector3.UP * 0.06) if not hit.is_empty() else global_position
 
 
 ## Called by a PickupItem's own script when its Interactable fires - mirrors
